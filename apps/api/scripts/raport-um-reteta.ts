@@ -7,16 +7,18 @@ import ExcelJS from 'exceljs'
 import { clientSql } from '../src/db.js'
 
 /**
- * Where the recipe sheets and the catalogue disagree about a unit of measure.
+ * Where the recipe sheets and the catalogue measure the same material
+ * differently.
  *
- * Not an import problem: SAGA takes the unit from the file, so the export is
- * correct whatever the article says. This is a mapping check.
+ * Checked against the names: 24 of the 26 match the catalogue exactly and the
+ * other two differ only in spacing. These are not wrong mappings — the workshop
+ * counts PAL in square metres and SAGA holds it per plate, glue is kilograms on
+ * the sheet and containers in the catalogue. Both are right about their own
+ * article.
  *
- * A unit that differs by a factor — MIIB against BUC — is usually nothing, just
- * two ways of counting the same staples. A unit that cannot convert at all is a
- * different matter: CUIE is MIIB on the sheet and 00001228 CUIE is held in KG,
- * and thousands of pieces do not become kilograms. That is not a unit
- * disagreement, it is the wrong article.
+ * It does not affect the export, which carries the recipe's unit. It does affect
+ * costing: a price per plate cannot be multiplied by a quantity in square
+ * metres, so those lines are left out of a total rather than silently wrong.
  *
  *   pnpm --filter @samobi/api raport-um-reteta
  */
@@ -66,8 +68,8 @@ function verdict(umReteta: string, umSaga: string): { fel: string; nota: string 
     }
   }
   return {
-    fel: 'VERIFICĂ MAPAREA',
-    nota: 'unitățile nu se convertesc — probabil e alt articol',
+    fel: 'PREȚ NEFOLOSIBIL',
+    nota: 'unități diferite: prețul din nomenclator nu se poate înmulți cu cantitatea',
   }
 }
 
@@ -132,14 +134,16 @@ const [total] = await clientSql<{ c: number }[]>`
 console.log(`${randuri.length} articole cu UM diferită de rețetar.`)
 console.log(`  ${scara} aceeași măsură la altă scară — maparea e probabil bună`)
 console.log(`  ${scriere} doar ca scriere`)
-console.log(`  ${randuri.length - scara - scriere} de verificat — unitățile nu se convertesc`)
+console.log(
+  `  ${randuri.length - scara - scriere} cu preț nefolosibil — unități care nu se convertesc`,
+)
 console.log(`\ndin ${total?.c ?? 0} linii de rețetă cu cod SAGA.`)
 console.log('Scris în docs/um-de-verificat.xlsx')
 
-console.log('\nDe verificat, cele mai multe linii:')
+console.log('\nCu preț nefolosibil, cele mai multe linii:')
 let aratate = 0
 for (const r of randuri) {
-  if (verdict(r.um_reteta, r.um_saga).fel !== 'VERIFICĂ MAPAREA' || aratate >= 12) continue
+  if (verdict(r.um_reteta, r.um_saga).fel !== 'PREȚ NEFOLOSIBIL' || aratate >= 12) continue
   aratate += 1
   console.log(
     `  ${r.cod_saga}  ${r.denumire.slice(0, 34).padEnd(34)} rețetar ${r.um_reteta.padEnd(7)} SAGA ${r.um_saga.padEnd(6)} ${r.nr_linii} linii`,

@@ -42,7 +42,7 @@ interface Antecalculatie {
   randuri: RandCost[]
   peGrup: { grup: string; valoare: string }[]
   total: { net: string; pierderi: string; total: string; peBucata: string | null }
-  acoperire: { linii: number; faraPret: number; procent: number }
+  acoperire: { linii: number; faraPret: number; umNepotrivita: number; procent: number }
 }
 
 interface Necesar {
@@ -125,8 +125,8 @@ function Acoperire({ procent, detaliu }: { procent: number; detaliu: string }) {
   if (procent >= 100) return null
   return (
     <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-      Doar <strong>{procent}%</strong> din linii au preț în nomenclator. {detaliu} Restul lipsesc
-      din total — cifra de mai jos e un minim, nu costul real.
+      Doar <strong>{procent}%</strong> din linii intră în total. {detaliu} Restul lipsesc — cifra de
+      mai jos e un minim, nu costul real.
     </p>
   )
 }
@@ -244,7 +244,12 @@ function PanouAntecalculatie() {
         <>
           <Acoperire
             procent={calculeaza.data.acoperire.procent}
-            detaliu={`${calculeaza.data.acoperire.faraPret} din ${calculeaza.data.acoperire.linii} materiale n-au preț.`}
+            detaliu={
+              `${calculeaza.data.acoperire.faraPret} din ${calculeaza.data.acoperire.linii} materiale n-au preț` +
+              (calculeaza.data.acoperire.umNepotrivita > 0
+                ? `, iar ${calculeaza.data.acoperire.umNepotrivita} au prețul în altă unitate decât cantitatea din rețetă — nu se pot înmulți.`
+                : '.')
+            }
           />
 
           <div className="flex flex-wrap gap-4">

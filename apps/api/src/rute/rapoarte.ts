@@ -7,6 +7,7 @@ import {
   sagaArticle,
 } from '@samobi/shared/db'
 import { EroareCalcul } from '@samobi/shared/calcul'
+import { normalizeazaUm } from '@samobi/shared/nomenclator'
 import { schemaPrevizualizare } from '@samobi/shared/scheme'
 import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
@@ -83,11 +84,24 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
               // The average if the catalogue has one, otherwise the last price
               // the article was actually consumed at.
               pretReferinta: sql<string | null>`coalesce(${sagaArticle.pretReferinta}, ${sagaArticle.pretConsum})`,
+              um: sagaArticle.um,
             })
             .from(sagaArticle)
             .where(inArray(sagaArticle.codSaga, coduri))
 
-    const preturi = new Map(articole.map((a) => [a.codSaga, a.pretReferinta]))
+    /**
+     * A price only counts when it is quoted in the unit the recipe uses.
+     *
+     * The catalogue holds PAL per plate and the sheet consumes square metres;
+     * multiplying one by the other produces a number with no meaning. Those
+     * lines are reported as unpriced rather than silently wrong.
+     */
+    const preturi = new Map(
+      articole.map((a) => [
+        a.codSaga,
+        { pret: a.pretReferinta, um: (normalizeazaUm(a.um) ?? '').toUpperCase() },
+      ]),
+    )
 
     // The recipe's group, so the cost can be read the way the recipe is written.
     const grupuri = new Map(
@@ -103,11 +117,18 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
     let totalPierderi = 0
     let faraPret = 0
 
-    const randuri: RandCost[] = calcul.linii.map((linie) => {
-      const pret = preturi.get(linie.codSaga)
-      if (pret === null || pret === undefined) faraPret += 1
+    let umNepotrivita = 0
 
-      const unitar = pret === null || pret === undefined ? null : Number(pret)
+    const randuri: RandCost[] = calcul.linii.map((linie) => {
+      const articol = preturi.get(linie.codSaga)
+      const umLinie = (normalizeazaUm(linie.um) ?? '').toUpperCase()
+      const potrivit =
+        articol !== undefined && articol.um !== '' && umLinie !== '' && articol.um === umLinie
+
+      if (articol?.pret == null) faraPret += 1
+      else if (!potrivit) umNepotrivita += 1
+
+      const unitar = articol?.pret != null && potrivit ? Number(articol.pret) : null
       const net = unitar === null ? null : Number(linie.cantitateNeta) * unitar
       const brut = unitar === null ? null : Number(linie.cantitateBruta) * unitar
 
@@ -155,7 +176,13 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
       acoperire: {
         linii: randuri.length,
         faraPret,
-        procent: randuri.length === 0 ? 0 : Math.round(((randuri.length - faraPret) / randuri.length) * 100),
+        // Priced, but in a unit the quantity is not expressed in. Counted apart
+        // so the gap is attributable rather than lumped in with "no price".
+        umNepotrivita,
+        procent:
+          randuri.length === 0
+            ? 0
+            : Math.round(((randuri.length - faraPret - umNepotrivita) / randuri.length) * 100),
       },
     }
   })
