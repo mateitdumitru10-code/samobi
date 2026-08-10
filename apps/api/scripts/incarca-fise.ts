@@ -10,6 +10,9 @@ import {
 import { potrivireSigura, sugereaza, type Candidat } from '@samobi/shared/nomenclator'
 import { asc, eq } from 'drizzle-orm'
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { clientSql, db } from '../src/db.js'
 
 import { FISE, type Fisa, type LinieFisa } from './fise.js'
@@ -26,6 +29,22 @@ import { FISE, type Fisa, type LinieFisa } from './fise.js'
  *   pnpm --filter @samobi/api incarca-fise            # raportează, nu scrie
  *   pnpm --filter @samobi/api incarca-fise -- --scrie
  */
+
+/**
+ * Decisions a tehnolog already made, keyed `MODEL#poziție`.
+ *
+ * These beat any similarity score: a person looked at the sheet and the
+ * catalogue and chose. Written by aplica-mapari from the filled worksheet.
+ */
+const mapari: Record<string, string> = (() => {
+  try {
+    return JSON.parse(
+      readFileSync(resolve(import.meta.dirname, 'mapari.json'), 'utf8'),
+    ) as Record<string, string>
+  } catch {
+    return {}
+  }
+})()
 
 const scrie = process.argv.includes('--scrie')
 /** Replaces the lines of a recipe that already exists, instead of skipping it. */
@@ -75,11 +94,26 @@ interface Potrivire {
   denumireGasita: string | null
   scor: number
   alternative: { codSaga: string; denumire: string; scor: number }[]
+  /** Chosen by a person rather than by the matcher. */
+  manual?: boolean
 }
 
-function potriveste(linie: LinieFisa): Potrivire {
+function potriveste(linie: LinieFisa, codModel: string): Potrivire {
   if (linie.variabil === true) {
     return { linie, codSaga: null, denumireGasita: null, scor: 1, alternative: [] }
+  }
+
+  const ales = mapari[`${codModel}#${linie.nr}`]
+  if (ales !== undefined) {
+    const articol = toate.find((a) => a.codSaga === ales)
+    return {
+      linie,
+      codSaga: ales,
+      denumireGasita: articol?.denumire ?? '(cod ales manual)',
+      scor: 1,
+      alternative: [],
+      manual: true,
+    }
   }
   const dinMateriiPrime = sugereaza(linie.denumire, materiiPrime, { limita: 3, prag: 0.3 })
   const sigurDinMateriiPrime =
@@ -112,7 +146,7 @@ function potriveste(linie: LinieFisa): Potrivire {
 async function incarca(fisa: Fisa) {
   console.log(`\n=== ${fisa.denumire} (${fisa.linii.length} linii) ===`)
 
-  const potriviri = fisa.linii.map(potriveste)
+  const potriviri = fisa.linii.map((linie) => potriveste(linie, fisa.cod))
   const nepotrivite = potriviri.filter((p) => p.codSaga === null && p.linie.variabil !== true)
   const potrivite = potriviri.filter((p) => p.codSaga !== null || p.linie.variabil === true)
 
@@ -131,7 +165,7 @@ async function incarca(fisa: Fisa) {
       )
       continue
     }
-    const semn = p.scor >= 0.85 ? ' ' : '?'
+    const semn = p.manual === true ? 'M' : p.scor >= 0.85 ? ' ' : '?'
     console.log(
       `${semn} ${String(p.linie.nr).padStart(2)}  ${p.linie.denumire.padEnd(26)} → ${p.codSaga} ${(p.denumireGasita ?? '').padEnd(28)} ${Math.round(p.scor * 100)}%`,
     )
@@ -200,12 +234,12 @@ async function incarca(fisa: Fisa) {
     retetaId = reteta.id
   }
 
-  let nr = 0
   for (const p of potrivite) {
-    nr += 1
     await db.insert(recipeLine).values({
       recipeId: retetaId,
-      nrLinie: nr,
+      // The sheet's own position, gaps included. A line numbered 27 in the app
+      // is line 27 on the paper the tehnolog is holding.
+      nrLinie: p.linie.nr,
       grup: p.linie.grup,
       codSaga: p.codSaga,
       esteVariabil: p.linie.variabil === true,
@@ -228,7 +262,7 @@ async function incarca(fisa: Fisa) {
       .onConflictDoNothing()
   }
 
-  console.log(`  Scris: ${fisa.cod}, ${nr} linii.`)
+  console.log(`  Scris: ${fisa.cod}, ${potrivite.length} linii.`)
 }
 
 for (const fisa of FISE) {

@@ -14,7 +14,9 @@
     "link-activare": "tsx --env-file=.env scripts/link-activare.ts",
     "import-nomenclator": "tsx --env-file=.env scripts/import-nomenclator.ts",
     "incarca-fise": "tsx --env-file=.env scripts/incarca-fise.ts",
-    "raport-um-lipsa": "tsx --env-file=.env scripts/raport-um-lipsa.ts"
+    "raport-um-lipsa": "tsx --env-file=.env scripts/raport-um-lipsa.ts",
+    "raport-nemapate": "tsx --env-file=.env scripts/raport-nemapate.ts",
+    "aplica-mapari": "tsx --env-file=.env scripts/aplica-mapari.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
