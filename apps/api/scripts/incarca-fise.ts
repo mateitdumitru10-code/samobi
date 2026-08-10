@@ -274,7 +274,14 @@ async function incarca(fisa: Fisa) {
       })
       .onConflictDoUpdate({
         target: unmappedMaterial.denumireExterna,
-        set: { sugestieCodSaga: p.alternative[0]?.codSaga ?? null },
+        set: {
+          sugestieCodSaga: p.alternative[0]?.codSaga ?? null,
+          sugestii: p.alternative.map((a) => ({
+            codSaga: a.codSaga,
+            denumire: a.denumire,
+            scor: Math.round(a.scor * 100),
+          })),
+        },
       })
       .returning({ id: unmappedMaterial.id })
 

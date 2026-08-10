@@ -7,8 +7,7 @@ import {
   unmappedMaterial,
   unmappedMaterialOcurenta,
 } from '@samobi/shared/db'
-import { sugereaza } from '@samobi/shared/nomenclator'
-import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -38,6 +37,13 @@ const schemaListare = z.object({
   pagina: z.coerce.number().int().min(1).default(1),
   pePagina: z.coerce.number().int().min(1).max(200).default(50),
 })
+
+/** Shape of `unmapped_material.sugestii`, written when the material is queued. */
+interface SugestieSalvata {
+  codSaga: string
+  denumire: string
+  scor: number
+}
 
 const schemaRezolvare = z.object({
   codSaga: z.string().trim().min(1, 'Alege un articol.'),
@@ -193,17 +199,23 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
       else grup.push(o)
     }
 
-    const catalog = await db
-      .select({ codSaga: sagaArticle.codSaga, denumire: sagaArticle.denumire })
-      .from(sagaArticle)
-      .where(
-        and(
-          eq(sagaArticle.activ, true),
-          eq(sagaArticle.tip, 'materie_prima'),
-          // An article with no unit cannot be the answer: SAGA would refuse it.
-          sql`btrim(${sagaArticle.um}) <> ''`,
-        ),
-      )
+    // Suggestions are worked out once, when the material is queued, and read
+    // back here. Recomputing them cost 6,6 seconds of CPU per request: 171 names
+    // against 14.329 articles, on every load and after every resolution.
+    const codurile = randuri
+      .flatMap((r) => (r.sugestii as SugestieSalvata[] | null) ?? [])
+      .map((s) => s.codSaga)
+
+    const um = new Map(
+      codurile.length === 0
+        ? []
+        : (
+            await db
+              .select({ codSaga: sagaArticle.codSaga, um: sagaArticle.um })
+              .from(sagaArticle)
+              .where(inArray(sagaArticle.codSaga, [...new Set(codurile)]))
+          ).map((a) => [a.codSaga, a.um]),
+    )
 
     return randuri.map((rand) => ({
       id: rand.id,
@@ -219,7 +231,10 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
         cantitate: o.cantitate,
         grup: o.grup,
       })),
-      sugestii: sugereaza(rand.denumireExterna, catalog),
+      sugestii: ((rand.sugestii as SugestieSalvata[] | null) ?? []).map((s) => ({
+        ...s,
+        um: um.get(s.codSaga) ?? '',
+      })),
     }))
   })
 
@@ -260,48 +275,78 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
           ),
         )
 
-      const retete: string[] = []
-      let sarite = 0
+      if (ocurente.length === 0) {
+        await tx
+          .update(unmappedMaterial)
+          .set({
+            sugestieCodSaga: codSaga,
+            rezolvat: true,
+            rezolvatDe: utilizator.id,
+            rezolvatLa: new Date(),
+          })
+          .where(eq(unmappedMaterial.id, id))
+        return { denumire: material.denumireExterna, linii: 0, sarite: 0 }
+      }
 
-      for (const o of ocurente) {
-        const [reteta] = await tx.select().from(recipe).where(eq(recipe.id, o.recipeId)).limit(1)
-        // An active recipe is immutable; completing it would change what a bon
-        // already issued against it means.
-        if (reteta === undefined || reteta.status !== 'draft') {
-          sarite += 1
-          continue
-        }
+      // In batches, not one round trip per occurrence. A material can block
+      // twenty recipes, and three statements each over a pooler in Ireland is
+      // seconds of waiting for work the database does in one pass.
+      const draft = new Set(
+        (
+          await tx
+            .select({ id: recipe.id })
+            .from(recipe)
+            .where(
+              and(
+                inArray(
+                  recipe.id,
+                  ocurente.map((o) => o.recipeId),
+                ),
+                eq(recipe.status, 'draft'),
+              ),
+            )
+        ).map((r) => r.id),
+      )
 
+      // An active recipe is immutable; completing it would change what a bon
+      // already issued against it means.
+      const deAplicat = ocurente.filter((o) => draft.has(o.recipeId))
+      const sarite = ocurente.length - deAplicat.length
+
+      if (deAplicat.length > 0) {
         await tx
           .insert(recipeLine)
-          .values({
-            recipeId: o.recipeId,
-            nrLinie: o.nrLinie,
-            grup: o.grup,
-            codSaga,
-            esteVariabil: false,
-            // The sheet's unit, as everywhere else: SAGA's own may be blank.
-            um: o.um,
-            modCalcul: 'fixa',
-            cantitateFixa: o.cantitate,
-            procentPierderi: '0',
-            observatii: `mapat din „${material.denumireExterna}", poziția ${o.nrLinie}`,
-          })
+          .values(
+            deAplicat.map((o) => ({
+              recipeId: o.recipeId,
+              nrLinie: o.nrLinie,
+              grup: o.grup,
+              codSaga,
+              esteVariabil: false,
+              // The sheet's unit, as everywhere else: SAGA's own may be blank.
+              um: o.um,
+              modCalcul: 'fixa',
+              cantitateFixa: o.cantitate,
+              procentPierderi: '0',
+              observatii: `mapat din „${material.denumireExterna}", poziția ${o.nrLinie}`,
+            })),
+          )
           .onConflictDoNothing()
 
         await tx
           .update(unmappedMaterialOcurenta)
           .set({ aplicat: true })
-          .where(eq(unmappedMaterialOcurenta.id, o.id))
+          .where(
+            inArray(
+              unmappedMaterialOcurenta.id,
+              deAplicat.map((o) => o.id),
+            ),
+          )
 
-        if (!retete.includes(o.recipeId)) retete.push(o.recipeId)
-      }
-
-      for (const retetaId of retete) {
         await tx
           .update(recipe)
           .set({ lockVersion: sql`${recipe.lockVersion} + 1` })
-          .where(eq(recipe.id, retetaId))
+          .where(inArray(recipe.id, [...draft]))
       }
 
       await tx
@@ -314,7 +359,7 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
         })
         .where(eq(unmappedMaterial.id, id))
 
-      return { denumire: material.denumireExterna, linii: ocurente.length - sarite, sarite }
+      return { denumire: material.denumireExterna, linii: deAplicat.length, sarite }
     })
 
     await scrieAudit(cerere, {
