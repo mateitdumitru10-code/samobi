@@ -174,6 +174,9 @@ export interface RandVersiune {
   valabilDeLa: string | null
   aprobatDe: string | null
   aprobatLa: string | null
+  /** Why the last submission was turned down; cleared on the next submission. */
+  motivRespingere: string | null
+  respinsLa: string | null
   creatLa: string
   nrLinii: number
   nrBonuri: number

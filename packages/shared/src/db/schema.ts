@@ -300,6 +300,16 @@ export const recipe = pgTable(
     aprobatLa: timestamp('aprobat_la', { withTimezone: true }),
     /** optimistic locking for the recipe grid; a conflict returns 409 */
     lockVersion: integer('lock_version').notNull().default(0),
+    /**
+     * Why the last submission was turned down.
+     *
+     * It was only written to the audit log, where the tehnolog cannot see it:
+     * the recipe came back to draft with no word on what to fix. Cleared when
+     * it is submitted again.
+     */
+    motivRespingere: text('motiv_respingere'),
+    respinsDe: uuid('respins_de').references(() => profile.id),
+    respinsLa: timestamp('respins_la', { withTimezone: true }),
     creatDe: uuid('creat_de').references(() => profile.id),
     creatLa: creatLa(),
   },

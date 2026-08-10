@@ -44,4 +44,7 @@ export interface RandCont {
   rol: RolValidat
   activ: boolean
   creatLa: string
+  email: string | null
+  /** Invited but never signed in — the link may have expired. */
+  invitat: boolean
 }

@@ -2,7 +2,10 @@ import type { UtilizatorCurent } from '@samobi/shared/scheme'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
-import { apel, type EroareApi } from '../lib/api.js'
+import { apel } from '../lib/api.js'
+import { CautaArticol, type ArticolGasit } from '../ui/CautaArticol.js'
+import { cant, dataRo, lei } from '../ui/numere.js'
+import { BannerEroare, Gol, Insigna, RanduriSchelet, RandStare } from '../ui/stari.js'
 
 interface RandModel {
   id: string
@@ -79,39 +82,50 @@ interface Cost {
   totalPierderi: string
 }
 
-const lei = (v: string | null) =>
-  v === null ? '—' : Number(v).toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const RAPOARTE = [
+  { cheie: 'antecalculatie', eticheta: 'Antecalculație' },
+  { cheie: 'necesar', eticheta: 'Necesar de aprovizionare' },
+  { cheie: 'cost', eticheta: 'Cost material' },
+] as const
+
+type CheieRaport = (typeof RAPOARTE)[number]['cheie']
 
 const AZI = new Date().toISOString().slice(0, 10)
 const ACUM_O_LUNA = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
 
 export function Rapoarte({ utilizator }: { utilizator: UtilizatorCurent }) {
-  const [raport, setRaport] = useState<'antecalculatie' | 'necesar' | 'cost'>('antecalculatie')
+  // Kept in the URL so a refresh, a back button or a pasted link all land on
+  // the report the user was actually looking at.
+  const [raport, setRaport] = useState<CheieRaport>(() => {
+    const din = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('tip')
+    return RAPOARTE.some((r) => r.cheie === din) ? (din as CheieRaport) : 'antecalculatie'
+  })
+
+  function alege(cheie: CheieRaport) {
+    setRaport(cheie)
+    window.history.replaceState(null, '', `#/rapoarte?tip=${cheie}`)
+  }
 
   return (
     <section className="space-y-6">
-      <nav className="flex gap-1 border-b border-neutral-200">
-        {(
-          [
-            ['antecalculatie', 'Antecalculație'],
-            ['necesar', 'Necesar de aprovizionare'],
-            ['cost', 'Cost material'],
-          ] as const
-        ).map(([cheie, eticheta]) => (
+      {/* A segmented control, not a second row of tabs: the primary navigation
+          already owns that shape, and two of them stacked read as peers. */}
+      <div className="inline-flex rounded-lg bg-surface-sunken p-1">
+        {RAPOARTE.map((r) => (
           <button
-            key={cheie}
+            key={r.cheie}
             type="button"
-            onClick={() => setRaport(cheie)}
+            onClick={() => alege(r.cheie)}
             className={
-              raport === cheie
-                ? 'border-b-2 border-neutral-900 px-3 py-2 text-sm font-medium text-neutral-900'
-                : 'border-b-2 border-transparent px-3 py-2 text-sm text-neutral-500 hover:text-neutral-900'
+              raport === r.cheie
+                ? 'rounded-md bg-surface px-3 py-1.5 text-sm font-medium text-ink shadow-[0_1px_2px_rgb(28_25_23/0.06)]'
+                : 'rounded-md px-3 py-1.5 text-sm text-ink-muted hover:text-ink'
             }
           >
-            {eticheta}
+            {r.eticheta}
           </button>
         ))}
-      </nav>
+      </div>
 
       {raport === 'antecalculatie' && <PanouAntecalculatie />}
       {raport === 'necesar' && <PanouNecesar />}
@@ -124,7 +138,7 @@ export function Rapoarte({ utilizator }: { utilizator: UtilizatorCurent }) {
 function Acoperire({ procent, detaliu }: { procent: number; detaliu: string }) {
   if (procent >= 100) return null
   return (
-    <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+    <p className="rounded-lg border border-atentie-border bg-atentie-bg px-3 py-2 text-sm text-atentie">
       Doar <strong>{procent}%</strong> din linii intră în total. {detaliu} Restul lipsesc — cifra de
       mai jos e un minim, nu costul real.
     </p>
@@ -135,7 +149,7 @@ function PanouAntecalculatie() {
   const [modelId, setModelId] = useState('')
   const [dimensiuneId, setDimensiuneId] = useState('')
   const [cantitate, setCantitate] = useState('1')
-  const [alegeri, setAlegeri] = useState<Record<string, string>>({})
+  const [alegeri, setAlegeri] = useState<Record<string, ArticolGasit>>({})
 
   const modele = useQuery({ queryKey: ['modele'], queryFn: () => apel<RandModel[]>('/modele') })
 
@@ -157,87 +171,146 @@ function PanouAntecalculatie() {
     mutationFn: () =>
       apel<Antecalculatie>('/rapoarte/antecalculatie', {
         metoda: 'POST',
-        corp: { modelId, dimensiuneId, cantitate, alegeri },
+        corp: {
+          modelId,
+          dimensiuneId,
+          cantitate,
+          alegeri: Object.fromEntries(
+            Object.entries(alegeri).map(([cheie, a]) => [cheie, a.codSaga]),
+          ),
+        },
       }),
   })
 
   const variabile = context.data?.liniiVariabile ?? []
-  const gata = modelId !== '' && dimensiuneId !== '' && variabile.every((l) => (alegeri[l.id] ?? '') !== '')
+  const cantitateValida = /^\d+$/.test(cantitate.trim()) && Number(cantitate) > 0
+  const lipsescCoduri = variabile.filter((l) => alegeri[l.id] === undefined)
+  const gata = modelId !== '' && dimensiuneId !== '' && lipsescCoduri.length === 0 && cantitateValida
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Model</span>
+      <div className="card flex flex-wrap items-end gap-3 p-4">
+        <div>
+          <label htmlFor="model-ante" className="eticheta">
+            Model
+          </label>
           <select
+            id="model-ante"
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
-            className="w-64 rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            className="camp w-64"
           >
-            <option value="">alege…</option>
+            <option value="">{modele.isLoading ? 'se încarcă…' : 'alege…'}</option>
             {modele.data?.map((m) => (
               <option key={m.id} value={m.id} disabled={m.nrDimensiuni === 0}>
                 {m.denumire}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Dimensiune</span>
+        <div>
+          <label htmlFor="dim-ante" className="eticheta">
+            Dimensiune
+          </label>
           <select
+            id="dim-ante"
             value={dimensiuneId}
             disabled={modelId === ''}
             onChange={(e) => setDimensiuneId(e.target.value)}
-            className="w-40 rounded-md border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-50"
+            className="camp w-40"
           >
-            <option value="">alege…</option>
+            <option value="">{context.isFetching ? 'se încarcă…' : 'alege…'}</option>
             {context.data?.dimensiuni.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.cod}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Cantitate</span>
+        <div>
+          <label htmlFor="cant-ante" className="eticheta">
+            Cantitate (buc)
+          </label>
           <input
+            id="cant-ante"
             value={cantitate}
+            inputMode="numeric"
+            aria-invalid={cantitate.trim() !== '' && !cantitateValida}
             onChange={(e) => setCantitate(e.target.value)}
-            className="w-24 rounded-md border border-neutral-300 px-3 py-2 text-right text-sm tabular-nums"
+            className="camp w-24 text-right tabular-nums"
           />
-        </label>
+        </div>
 
         <button
           type="button"
           disabled={!gata || calculeaza.isPending}
           onClick={() => calculeaza.mutate()}
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="buton buton-primar"
         >
           {calculeaza.isPending ? 'Se calculează…' : 'Calculează'}
         </button>
       </div>
 
       {variabile.length > 0 && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
-          <span className="text-blue-900">Materiale variabile de ales: </span>
-          {variabile.map((l) => (
-            <input
-              key={l.id}
-              value={alegeri[l.id] ?? ''}
-              onChange={(e) => setAlegeri((a) => ({ ...a, [l.id]: e.target.value }))}
-              placeholder={`cod pentru linia ${l.nrLinie}`}
-              className="ml-2 w-40 rounded-md border border-neutral-300 px-2 py-1 font-mono text-xs"
-            />
-          ))}
+        <div className="rounded-lg border border-info-border bg-info-bg p-4">
+          <h3 className="text-sm font-semibold text-info">Materiale variabile de ales</h3>
+          <ul className="mt-3 space-y-2">
+            {variabile.map((l) => {
+              const ales = alegeri[l.id]
+              return (
+                <li key={l.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="w-52 shrink-0 text-ink-secondary">
+                    {l.grup}, {l.um} — linia {l.nrLinie}
+                  </span>
+                  {ales === undefined ? (
+                    <CautaArticol
+                      umAsteptat={l.um}
+                      placeholder={
+                        l.categorieVariabila === null
+                          ? 'caută material…'
+                          : `caută în ${l.categorieVariabila}…`
+                      }
+                      onAlege={(a) => setAlegeri((curente) => ({ ...curente, [l.id]: a }))}
+                    />
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono text-xs">{ales.codSaga}</span>
+                      <span className="text-ink">{ales.denumire}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAlegeri((curente) =>
+                            Object.fromEntries(
+                              Object.entries(curente).filter(([cheie]) => cheie !== l.id),
+                            ),
+                          )
+                        }
+                        className="text-xs text-brand underline underline-offset-2"
+                      >
+                        schimbă
+                      </button>
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
         </div>
       )}
 
-      {calculeaza.isError && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {(calculeaza.error as EroareApi).message}
-        </p>
+      {calculeaza.isError && <BannerEroare eroare={calculeaza.error} titlu="Calculul a eșuat." />}
+
+      {calculeaza.data === undefined && !calculeaza.isPending && (
+        <Gol
+          titlu="Alege modelul și dimensiunea, apoi apasă Calculează"
+          indiciu={
+            lipsescCoduri.length > 0
+              ? `Mai trebuie ales materialul pentru ${lipsescCoduri.length} linii variabile.`
+              : 'Raportul arată ce costă un lot înainte să fie produs.'
+          }
+        />
       )}
 
       {calculeaza.data !== undefined && (
@@ -261,23 +334,39 @@ function PanouAntecalculatie() {
 
           <div className="flex flex-wrap gap-2">
             {calculeaza.data.peGrup.map((g) => (
-              <span key={g.grup} className="rounded-md bg-neutral-100 px-3 py-1.5 text-sm">
-                {g.grup} <span className="font-medium tabular-nums">{lei(g.valoare)}</span>
+              <span key={g.grup} className="rounded-md bg-surface-sunken px-3 py-1.5 text-sm">
+                {g.grup}{' '}
+                <span className="font-medium tabular-nums">{lei(g.valoare)}</span>{' '}
+                <span className="text-xs text-ink-muted">lei</span>
               </span>
             ))}
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-            <table className="w-full text-sm">
-              <thead className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-500">
+          <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+            <table className="w-full text-sm" aria-label="Antecalculație pe materiale">
+              <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Cod</th>
-                  <th className="px-4 py-2 font-medium">Denumire</th>
-                  <th className="px-4 py-2 font-medium">Grup</th>
-                  <th className="px-4 py-2 text-right font-medium">Net</th>
-                  <th className="px-4 py-2 text-right font-medium">Brut</th>
-                  <th className="px-4 py-2 text-right font-medium">Preț</th>
-                  <th className="px-4 py-2 text-right font-medium">Valoare</th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    Cod
+                  </th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    Denumire
+                  </th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    Grup
+                  </th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">
+                    Net
+                  </th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">
+                    Brut
+                  </th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">
+                    Preț (lei)
+                  </th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">
+                    Valoare (lei)
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -286,22 +375,22 @@ function PanouAntecalculatie() {
                     key={r.codSaga}
                     className={
                       r.pretUnitar === null
-                        ? 'border-b border-neutral-100 bg-amber-50/50 last:border-0'
-                        : 'border-b border-neutral-100 last:border-0'
+                        ? 'border-t border-line bg-atentie-bg'
+                        : 'border-t border-line hover:bg-surface-page'
                     }
                   >
                     <td className="px-4 py-2 font-mono text-xs">{r.codSaga}</td>
                     <td className="px-4 py-2">{r.denumire}</td>
-                    <td className="px-4 py-2 text-xs text-neutral-500">{r.grup ?? '—'}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-neutral-500">
-                      {Number(r.cantitateNeta)} {r.um}
+                    <td className="px-4 py-2 text-xs text-ink-muted">{r.grup ?? '—'}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-ink-muted">
+                      {cant(r.cantitateNeta)} {r.um}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">
-                      {Number(r.cantitateBruta)} {r.um}
+                      {cant(r.cantitateBruta)} {r.um}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-neutral-500">
+                    <td className="px-4 py-2 text-right tabular-nums text-ink-muted">
                       {r.pretUnitar === null ? (
-                        <span className="text-amber-700">fără preț</span>
+                        <span className="text-atentie">fără preț</span>
                       ) : (
                         lei(r.pretUnitar)
                       )}
@@ -326,61 +415,87 @@ function PanouNecesar() {
     queryFn: () => apel<Necesar>('/rapoarte/necesar?status=calculat'),
   })
 
-  if (necesar.isLoading) return <p className="text-sm text-neutral-500">Se calculează…</p>
-  if (necesar.data === undefined) return null
+  const nrColoane = 7
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-neutral-600">
+      <p className="text-sm text-ink-secondary">
         Materialele cerute de bonurile calculate și neexportate încă, minus stocul.
-        {necesar.data.stocLa !== null &&
-          ` Stocul e cel din importul de nomenclator din ${new Date(necesar.data.stocLa).toLocaleDateString('ro-RO')}.`}
+        {necesar.data?.stocLa != null &&
+          ` Stocul e cel din importul de nomenclator din ${dataRo(necesar.data.stocLa)}.`}
       </p>
 
-      {(necesar.data.faraStoc > 0 || necesar.data.faraPret > 0) && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {necesar.data.faraStoc} materiale n-au stoc cunoscut (cerute integral), {necesar.data.faraPret}{' '}
-          n-au preț.
-        </p>
+      {necesar.isError && (
+        <BannerEroare
+          eroare={necesar.error}
+          titlu="Raportul nu s-a putut încărca."
+          onReincearca={() => void necesar.refetch()}
+        />
       )}
 
-      <Cifra eticheta="De cumpărat" valoare={necesar.data.total} accent />
+      {necesar.data !== undefined &&
+        (necesar.data.faraStoc > 0 || necesar.data.faraPret > 0) && (
+          <p className="rounded-lg border border-atentie-border bg-atentie-bg px-3 py-2 text-sm text-atentie">
+            {necesar.data.faraStoc} materiale n-au stoc cunoscut (cerute integral),{' '}
+            {necesar.data.faraPret} n-au preț.
+          </p>
+        )}
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-500">
+      <Cifra eticheta="De cumpărat" valoare={necesar.data?.total ?? null} accent />
+
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full text-sm" aria-label="Necesar de aprovizionare">
+          <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
             <tr>
-              <th className="px-4 py-2 font-medium">Cod</th>
-              <th className="px-4 py-2 font-medium">Denumire</th>
-              <th className="px-4 py-2 font-medium">Gestiune</th>
-              <th className="px-4 py-2 text-right font-medium">Necesar</th>
-              <th className="px-4 py-2 text-right font-medium">Stoc</th>
-              <th className="px-4 py-2 text-right font-medium">Lipsă</th>
-              <th className="px-4 py-2 text-right font-medium">Valoare</th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Cod
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Denumire
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Gestiune
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Necesar
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Stoc
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Lipsă
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Valoare (lei)
+              </th>
             </tr>
           </thead>
           <tbody>
-            {necesar.data.randuri.map((r) => (
-              <tr key={r.codSaga} className="border-b border-neutral-100 last:border-0">
+            {necesar.isLoading && <RanduriSchelet coloane={nrColoane} />}
+
+            {necesar.data?.randuri.map((r) => (
+              <tr key={r.codSaga} className="border-t border-line hover:bg-surface-page">
                 <td className="px-4 py-2 font-mono text-xs">{r.codSaga}</td>
                 <td className="px-4 py-2">{r.denumire}</td>
-                <td className="px-4 py-2 text-xs text-neutral-500">{r.gestiune ?? '—'}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-neutral-500">
-                  {Number(r.necesar)} {r.um}
+                <td className="px-4 py-2 text-xs text-ink-muted">{r.gestiune ?? '—'}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink-muted">
+                  {cant(r.necesar)} {r.um}
                 </td>
-                <td className="px-4 py-2 text-right tabular-nums text-neutral-500">
-                  {r.stoc === null ? <span className="text-amber-700">necunoscut</span> : Number(r.stoc)}
+                <td className="px-4 py-2 text-right tabular-nums text-ink-muted">
+                  {r.stoc === null ? <span className="text-atentie">necunoscut</span> : cant(r.stoc)}
                 </td>
-                <td className="px-4 py-2 text-right font-medium tabular-nums">{Number(r.lipsa)}</td>
+                <td className="px-4 py-2 text-right font-medium tabular-nums">{cant(r.lipsa)}</td>
                 <td className="px-4 py-2 text-right tabular-nums">{lei(r.valoare)}</td>
               </tr>
             ))}
-            {necesar.data.randuri.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-neutral-500">
-                  Nimic de cumpărat: nu există bonuri calculate neexportate, sau stocul acoperă tot.
-                </td>
-              </tr>
+
+            {necesar.data?.randuri.length === 0 && (
+              <RandStare coloane={nrColoane}>
+                <Gol
+                  titlu="Nimic de cumpărat"
+                  indiciu="Nu există bonuri calculate neexportate, sau stocul acoperă tot."
+                />
+              </RandStare>
             )}
           </tbody>
         </table>
@@ -393,102 +508,149 @@ function PanouCost({ utilizator }: { utilizator: UtilizatorCurent }) {
   const [deLa, setDeLa] = useState(ACUM_O_LUNA)
   const [panaLa, setPanaLa] = useState(AZI)
 
+  const intervalInvers = deLa > panaLa
+
   const cost = useQuery({
     queryKey: ['cost', deLa, panaLa],
     queryFn: () => apel<Cost>(`/rapoarte/cost?deLa=${deLa}&panaLa=${panaLa}`),
+    enabled: !intervalInvers,
   })
+
+  const nrColoane = 8
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">De la</span>
+      <div className="card flex flex-wrap items-end gap-3 p-4">
+        <div>
+          <label htmlFor="de-la" className="eticheta">
+            De la
+          </label>
           <input
+            id="de-la"
             type="date"
             value={deLa}
             onChange={(e) => setDeLa(e.target.value)}
-            className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            aria-invalid={intervalInvers}
+            className="camp"
           />
-        </label>
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Până la</span>
+        </div>
+        <div>
+          <label htmlFor="pana-la" className="eticheta">
+            Până la
+          </label>
           <input
+            id="pana-la"
             type="date"
             value={panaLa}
             onChange={(e) => setPanaLa(e.target.value)}
-            className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            aria-invalid={intervalInvers}
+            className="camp"
           />
-        </label>
-        <span className="pb-2 text-sm text-neutral-500">
-          bonuri exportate, {utilizator.rol === 'contabil' ? 'pentru contabilitate' : ''}
-        </span>
+        </div>
+        <p className="pb-2.5 text-sm text-ink-muted">
+          Costuri din bonurile exportate în perioada aleasă
+          {utilizator.rol === 'contabil' ? ', pentru contabilitate' : ''}.
+        </p>
       </div>
 
-      {cost.data !== undefined && (
-        <>
-          <div className="flex flex-wrap gap-4">
-            <Cifra eticheta="Cost material total" valoare={cost.data.total} accent />
-            <Cifra eticheta="din care pierderi" valoare={cost.data.totalPierderi} />
-          </div>
-
-          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-            <table className="w-full text-sm">
-              <thead className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-500">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Model</th>
-                  <th className="px-4 py-2 text-right font-medium">Bonuri</th>
-                  <th className="px-4 py-2 text-right font-medium">Bucăți</th>
-                  <th className="px-4 py-2 text-right font-medium">Net</th>
-                  <th className="px-4 py-2 text-right font-medium">Pierderi</th>
-                  <th className="px-4 py-2 text-right font-medium">Total</th>
-                  <th className="px-4 py-2 text-right font-medium">Pe bucată</th>
-                  <th className="px-4 py-2 text-right font-medium">Acoperire</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cost.data.randuri.map((r) => (
-                  <tr key={r.model} className="border-b border-neutral-100 last:border-0">
-                    <td className="px-4 py-2">
-                      {r.denumire}
-                      <span className="ml-2 text-xs text-neutral-400">{r.model}</span>
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">{r.bonuri}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{r.bucati}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-neutral-500">
-                      {lei(r.costNet)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-neutral-500">
-                      {lei(r.costPierderi)}
-                    </td>
-                    <td className="px-4 py-2 text-right font-medium tabular-nums">
-                      {lei(r.costTotal)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">{lei(r.costPeBucata)}</td>
-                    <td className="px-4 py-2 text-right">
-                      <span
-                        className={
-                          r.acoperire >= 80
-                            ? 'text-xs text-neutral-500'
-                            : 'text-xs font-medium text-amber-700'
-                        }
-                      >
-                        {r.acoperire}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {cost.data.randuri.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-6 text-neutral-500">
-                      Niciun bon exportat în perioada aleasă.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
+      {intervalInvers && (
+        <p
+          role="alert"
+          className="rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-sm text-danger"
+        >
+          Data de început este după data de sfârșit.
+        </p>
       )}
+
+      {cost.isError && (
+        <BannerEroare
+          eroare={cost.error}
+          titlu="Raportul nu s-a putut încărca."
+          onReincearca={() => void cost.refetch()}
+        />
+      )}
+
+      <div className="flex flex-wrap gap-4">
+        <Cifra eticheta="Cost material total" valoare={cost.data?.total ?? null} accent />
+        <Cifra eticheta="din care pierderi" valoare={cost.data?.totalPierderi ?? null} />
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full text-sm" aria-label="Cost material pe model">
+          <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
+            <tr>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Model
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Bonuri
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Bucăți
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Net (lei)
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Pierderi (lei)
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Total (lei)
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Pe bucată (lei)
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                <abbr title="Procentul liniilor de rețetă care au preț și intră în total">
+                  Acoperire
+                </abbr>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {cost.isLoading && !intervalInvers && <RanduriSchelet coloane={nrColoane} />}
+
+            {cost.data?.randuri.map((r) => (
+              <tr key={r.model} className="border-t border-line hover:bg-surface-page">
+                <td className="px-4 py-2">
+                  {r.denumire}
+                  <span className="ml-2 text-xs text-ink-muted">{r.model}</span>
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">{r.bonuri}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{r.bucati}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink-muted">
+                  {lei(r.costNet)}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink-muted">
+                  {lei(r.costPierderi)}
+                </td>
+                <td className="px-4 py-2 text-right font-medium tabular-nums">{lei(r.costTotal)}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{lei(r.costPeBucata)}</td>
+                <td className="px-4 py-2 text-right">
+                  {r.acoperire >= 80 ? (
+                    <span className="text-xs text-ink-muted">{r.acoperire}%</span>
+                  ) : (
+                    <Insigna fel="atentie">{r.acoperire}%</Insigna>
+                  )}
+                </td>
+              </tr>
+            ))}
+
+            {cost.data?.randuri.length === 0 && (
+              <RandStare coloane={nrColoane}>
+                <Gol
+                  titlu="Niciun bon exportat în perioada aleasă"
+                  indiciu="Raportul numără doar bonurile plecate în SAGA."
+                />
+              </RandStare>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-xs text-ink-muted">
+        Acoperire = câte dintre materialele rețetei au preț. Sub 100%, costul afișat e un minim.
+      </p>
     </div>
   )
 }
@@ -503,16 +665,17 @@ function Cifra({
   accent?: boolean
 }) {
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white px-4 py-3">
-      <p className="text-xs text-neutral-500">{eticheta}</p>
+    <div className="card px-4 py-3">
+      <p className="text-xs text-ink-muted">{eticheta}</p>
       <p
         className={
           accent === true
-            ? 'mt-1 text-xl font-semibold tabular-nums text-neutral-900'
-            : 'mt-1 text-xl tabular-nums text-neutral-700'
+            ? 'mt-1 text-2xl font-semibold tabular-nums text-ink'
+            : 'mt-1 text-2xl tabular-nums text-ink-secondary'
         }
       >
-        {lei(valoare)} <span className="text-sm font-normal text-neutral-400">lei</span>
+        {lei(valoare)}
+        {valoare !== null && <span className="ml-1 text-sm font-normal text-ink-muted">lei</span>}
       </p>
     </div>
   )

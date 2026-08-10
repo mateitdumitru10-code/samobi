@@ -3,17 +3,21 @@ import type { RandCont, RolValidat, UtilizatorCurent } from '@samobi/shared/sche
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 
-import { apel, EroareApi } from '../lib/api.js'
-
-const ETICHETE_ROL: Record<RolValidat, string> = {
-  admin: 'Administrator',
-  tehnolog: 'Tehnolog',
-  operator: 'Operator',
-  contabil: 'Contabil',
-}
+import { apel } from '../lib/api.js'
+import { useNotificari } from '../ui/Notificari.js'
+import { DESCRIERI_ROL, ETICHETE_ROL } from '../ui/roluri.js'
+import {
+  BannerEroare,
+  Confirma,
+  Insigna,
+  RanduriSchelet,
+  RandStare,
+  mesajEroare,
+} from '../ui/stari.js'
 
 export function Conturi({ utilizator }: { utilizator: UtilizatorCurent }) {
   const queryClient = useQueryClient()
+  const notificari = useNotificari()
   const [email, setEmail] = useState('')
   const [nume, setNume] = useState('')
   const [rol, setRol] = useState<RolValidat>('operator')
@@ -28,22 +32,45 @@ export function Conturi({ utilizator }: { utilizator: UtilizatorCurent }) {
   const invitatie = useMutation({
     mutationFn: () => apel('/conturi', { metoda: 'POST', corp: { email, nume, rol } }),
     onSuccess: async () => {
+      notificari.succes(`Invitația a plecat către ${email}.`)
       setEmail('')
       setNume('')
       await reincarca()
     },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
   })
 
   const schimbaRol = useMutation({
-    mutationFn: (v: { id: string; rol: RolValidat }) =>
+    mutationFn: (v: { id: string; rol: RolValidat; nume: string }) =>
       apel(`/conturi/${v.id}`, { metoda: 'PATCH', corp: { rol: v.rol } }),
-    onSuccess: reincarca,
+    onSuccess: async (_r, v) => {
+      notificari.succes(`${v.nume} este acum ${ETICHETE_ROL[v.rol]}.`)
+      await reincarca()
+    },
+    onError: async (e) => {
+      notificari.eroare(mesajEroare(e))
+      // Put the select back to what the server actually holds.
+      await reincarca()
+    },
   })
 
   const comutaActiv = useMutation({
-    mutationFn: (v: { id: string; activ: boolean }) =>
+    mutationFn: (v: { id: string; activ: boolean; nume: string }) =>
       apel(`/conturi/${v.id}/${v.activ ? 'dezactivare' : 'reactivare'}`, { metoda: 'POST' }),
-    onSuccess: reincarca,
+    onSuccess: async (_r, v) => {
+      notificari.succes(
+        v.activ ? `Contul lui ${v.nume} a fost dezactivat.` : `Contul lui ${v.nume} e din nou activ.`,
+      )
+      await reincarca()
+    },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
+  })
+
+  const reinvita = useMutation({
+    mutationFn: (v: { id: string; email: string | null }) =>
+      apel(`/conturi/${v.id}/reinvitare`, { metoda: 'POST' }),
+    onSuccess: (_r, v) => notificari.succes(`Invitația a fost retrimisă către ${v.email ?? 'cont'}.`),
+    onError: (e) => notificari.eroare(mesajEroare(e)),
   })
 
   function trimiteInvitatie(eveniment: FormEvent) {
@@ -51,50 +78,54 @@ export function Conturi({ utilizator }: { utilizator: UtilizatorCurent }) {
     invitatie.mutate()
   }
 
-  const eroare = [invitatie.error, schimbaRol.error, comutaActiv.error].find(
-    (e): e is EroareApi => e instanceof EroareApi,
-  )
+  const nrColoane = 5
 
   return (
     <section className="space-y-8">
-      <form
-        onSubmit={trimiteInvitatie}
-        className="rounded-lg border border-neutral-200 bg-white p-5"
-      >
-        <h2 className="text-sm font-semibold text-neutral-900">Invită un angajat</h2>
-        <p className="mt-1 text-sm text-neutral-500">
+      <form onSubmit={trimiteInvitatie} className="card p-5">
+        <h2 className="text-lg font-semibold text-ink">Invită un angajat</h2>
+        <p className="mt-1 text-sm text-ink-muted">
           Primește un email cu un link. Își alege singur parola — noi nu o vedem niciodată.
         </p>
 
         <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="space-y-1">
-            <span className="block text-xs font-medium text-neutral-600">Email</span>
+          <div>
+            <label htmlFor="email-invitat" className="eticheta">
+              Email
+            </label>
             <input
+              id="email-invitat"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-64 rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"
+              className="camp w-64"
             />
-          </label>
+          </div>
 
-          <label className="space-y-1">
-            <span className="block text-xs font-medium text-neutral-600">Nume</span>
+          <div>
+            <label htmlFor="nume-invitat" className="eticheta">
+              Nume
+            </label>
             <input
+              id="nume-invitat"
               value={nume}
               onChange={(e) => setNume(e.target.value)}
               required
               minLength={2}
-              className="w-52 rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"
+              className="camp w-52"
             />
-          </label>
+          </div>
 
-          <label className="space-y-1">
-            <span className="block text-xs font-medium text-neutral-600">Rol</span>
+          <div>
+            <label htmlFor="rol-invitat" className="eticheta">
+              Rol
+            </label>
             <select
+              id="rol-invitat"
               value={rol}
               onChange={(e) => setRol(e.target.value as RolValidat)}
-              className="rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"
+              className="camp w-44"
             >
               {ROLURI.map((r) => (
                 <option key={r} value={r}>
@@ -102,62 +133,84 @@ export function Conturi({ utilizator }: { utilizator: UtilizatorCurent }) {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
-          <button
-            type="submit"
-            disabled={invitatie.isPending}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
+          <button type="submit" disabled={invitatie.isPending} className="buton buton-primar">
             {invitatie.isPending ? 'Se trimite…' : 'Trimite invitația'}
           </button>
         </div>
 
-        {invitatie.isSuccess && (
-          <p className="mt-3 text-sm text-green-700">Invitația a plecat.</p>
-        )}
+        <p className="indiciu mt-2">{DESCRIERI_ROL[rol]}</p>
       </form>
 
-      {eroare && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{eroare.message}</p>
-      )}
+      <div className="card p-5">
+        <h3 className="text-sm font-semibold text-ink">Ce poate fiecare rol</h3>
+        <dl className="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
+          {ROLURI.map((r) => (
+            <div key={r} className="flex gap-2 text-sm">
+              <dt className="w-28 shrink-0 font-medium text-ink">{ETICHETE_ROL[r]}</dt>
+              <dd className="text-ink-secondary">{DESCRIERI_ROL[r]}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-500">
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full text-sm" aria-label="Utilizatori">
+          <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
             <tr>
-              <th className="px-4 py-3 font-medium">Nume</th>
-              <th className="px-4 py-3 font-medium">Rol</th>
-              <th className="px-4 py-3 font-medium">Stare</th>
-              <th className="px-4 py-3 font-medium">Creat</th>
-              <th className="px-4 py-3" />
+              <th scope="col" className="px-4 py-3 font-medium">
+                Nume
+              </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                Rol
+              </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                Stare
+              </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                Creat
+              </th>
+              <th scope="col" className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
-            {conturi.isLoading && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-neutral-500">
-                  Se încarcă…
-                </td>
-              </tr>
+            {conturi.isLoading && <RanduriSchelet coloane={nrColoane} />}
+
+            {conturi.isError && (
+              <RandStare coloane={nrColoane}>
+                <BannerEroare
+                  eroare={conturi.error}
+                  titlu="Utilizatorii nu s-au putut încărca."
+                  onReincearca={() => void conturi.refetch()}
+                />
+              </RandStare>
             )}
 
             {conturi.data?.map((cont) => {
               const eEu = cont.id === utilizator.id
+              const seSchimbaRolul = schimbaRol.isPending && schimbaRol.variables?.id === cont.id
+              const seComuta = comutaActiv.isPending && comutaActiv.variables?.id === cont.id
               return (
-                <tr key={cont.id} className="border-b border-neutral-100 last:border-0">
+                <tr key={cont.id} className="border-t border-line hover:bg-surface-page">
                   <td className="px-4 py-3">
-                    {cont.nume}
-                    {eEu && <span className="ml-2 text-xs text-neutral-400">(tu)</span>}
+                    <span className="text-ink">{cont.nume}</span>
+                    {eEu && <span className="ml-2 text-xs text-ink-muted">(tu)</span>}
+                    <span className="block text-xs text-ink-muted">{cont.email ?? '—'}</span>
                   </td>
                   <td className="px-4 py-3">
                     <select
                       value={cont.rol}
-                      disabled={eEu || schimbaRol.isPending}
+                      disabled={eEu || seSchimbaRolul}
+                      aria-label={`Rolul lui ${cont.nume}`}
                       onChange={(e) =>
-                        schimbaRol.mutate({ id: cont.id, rol: e.target.value as RolValidat })
+                        schimbaRol.mutate({
+                          id: cont.id,
+                          rol: e.target.value as RolValidat,
+                          nume: cont.nume,
+                        })
                       }
-                      className="rounded-md border border-neutral-300 px-2 py-1 text-sm disabled:bg-neutral-50 disabled:text-neutral-400"
+                      className="camp camp-mic w-40"
                     >
                       {ROLURI.map((r) => (
                         <option key={r} value={r}>
@@ -167,28 +220,52 @@ export function Conturi({ utilizator }: { utilizator: UtilizatorCurent }) {
                     </select>
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={
-                        cont.activ
-                          ? 'rounded-full bg-green-50 px-2 py-1 text-xs text-green-700'
-                          : 'rounded-full bg-neutral-100 px-2 py-1 text-xs text-neutral-500'
-                      }
-                    >
-                      {cont.activ ? 'activ' : 'dezactivat'}
-                    </span>
+                    {!cont.activ ? (
+                      <Insigna fel="neutru">Dezactivat</Insigna>
+                    ) : cont.invitat ? (
+                      <Insigna fel="atentie">Invitat</Insigna>
+                    ) : (
+                      <Insigna fel="succes">Activ</Insigna>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-neutral-500">
+                  <td className="px-4 py-3 whitespace-nowrap text-ink-muted">
                     {new Date(cont.creatLa).toLocaleDateString('ro-RO')}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      disabled={eEu || comutaActiv.isPending}
-                      onClick={() => comutaActiv.mutate({ id: cont.id, activ: cont.activ })}
-                      className="rounded-md border border-neutral-300 px-3 py-1 text-xs disabled:opacity-40"
-                    >
-                      {cont.activ ? 'Dezactivează' : 'Reactivează'}
-                    </button>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {cont.invitat && cont.activ && (
+                        <button
+                          type="button"
+                          disabled={reinvita.isPending}
+                          onClick={() => reinvita.mutate({ id: cont.id, email: cont.email })}
+                          className="buton buton-secundar buton-mic"
+                        >
+                          Retrimite invitația
+                        </button>
+                      )}
+                      {cont.activ ? (
+                        <Confirma
+                          eticheta="Dezactivează"
+                          intrebare={`Sigur dezactivezi contul lui ${cont.nume}?`}
+                          confirmare="Da, dezactivează"
+                          dezactivat={eEu || seComuta}
+                          onConfirma={() =>
+                            comutaActiv.mutate({ id: cont.id, activ: true, nume: cont.nume })
+                          }
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={eEu || seComuta}
+                          onClick={() =>
+                            comutaActiv.mutate({ id: cont.id, activ: false, nume: cont.nume })
+                          }
+                          className="buton buton-secundar buton-mic"
+                        >
+                          Reactivează
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )

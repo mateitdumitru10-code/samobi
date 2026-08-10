@@ -1,9 +1,12 @@
 import { FAMILII } from '@samobi/shared/db'
 import type { UtilizatorCurent } from '@samobi/shared/scheme'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useCallback, useState, type FormEvent } from 'react'
 
-import { apel, type EroareApi } from '../lib/api.js'
+import { apel } from '../lib/api.js'
+import { CautaArticol } from '../ui/CautaArticol.js'
+import { useNotificari } from '../ui/Notificari.js'
+import { BannerEroare, Gol, Insigna, Schelet, mesajEroare } from '../ui/stari.js'
 
 import { RetetaEditor } from './RetetaEditor.js'
 
@@ -42,56 +45,118 @@ function mm(valoare: string | null): string {
 export function Modele({ utilizator }: { utilizator: UtilizatorCurent }) {
   const poateEdita = utilizator.rol === 'admin' || utilizator.rol === 'tehnolog'
   const [selectat, setSelectat] = useState<string | null>(null)
+  const [cauta, setCauta] = useState('')
+  // Raised by the recipe editor. Switching models unmounts it, and forty
+  // transcribed lines used to go with it without a word.
+  const [areModificari, setAreModificari] = useState(false)
 
   const modele = useQuery({
     queryKey: ['modele'],
     queryFn: () => apel<RandModel[]>('/modele'),
   })
 
+  const onModificat = useCallback((m: boolean) => setAreModificari(m), [])
+
+  function alege(id: string) {
+    if (id === selectat) return
+    if (
+      areModificari &&
+      !window.confirm(
+        'Ai modificări nesalvate la rețeta acestui model. Le pierzi dacă treci la altul.',
+      )
+    ) {
+      return
+    }
+    setAreModificari(false)
+    setSelectat(id)
+  }
+
+  const filtrate = (modele.data ?? []).filter((m) => {
+    const text = cauta.trim().toLowerCase()
+    return text === '' || m.denumire.toLowerCase().includes(text) || m.cod.toLowerCase().includes(text)
+  })
+
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap gap-6">
-        <div className="w-full max-w-xs space-y-3">
+        <div className="w-full space-y-3 lg:max-w-xs">
           {poateEdita && <FormularModel />}
 
-          <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-            <ul className="divide-y divide-neutral-100">
-              {modele.data?.map((m) => (
+          <input
+            value={cauta}
+            onChange={(e) => setCauta(e.target.value)}
+            placeholder="Caută model…"
+            aria-label="Caută model"
+            className="camp"
+          />
+
+          <div className="overflow-hidden rounded-lg border border-line bg-surface">
+            {modele.isLoading && (
+              <div className="space-y-2 p-4">
+                <Schelet className="h-4 w-40" />
+                <Schelet className="h-4 w-32" />
+                <Schelet className="h-4 w-36" />
+              </div>
+            )}
+
+            {modele.isError && (
+              <div className="p-3">
+                <BannerEroare
+                  eroare={modele.error}
+                  titlu="Modelele nu s-au putut încărca."
+                  onReincearca={() => void modele.refetch()}
+                />
+              </div>
+            )}
+
+            <ul className="divide-y divide-line">
+              {filtrate.map((m) => (
                 <li key={m.id}>
                   <button
                     type="button"
-                    onClick={() => setSelectat(m.id)}
+                    onClick={() => alege(m.id)}
+                    aria-current={selectat === m.id ? 'true' : undefined}
                     className={
                       selectat === m.id
-                        ? 'w-full bg-neutral-100 px-4 py-3 text-left'
-                        : 'w-full px-4 py-3 text-left hover:bg-neutral-50'
+                        ? 'w-full border-l-2 border-brand bg-brand-subtle px-4 py-3 text-left'
+                        : 'w-full border-l-2 border-transparent px-4 py-3 text-left hover:bg-surface-page'
                     }
                   >
-                    <span className="block text-sm font-medium text-neutral-900">{m.denumire}</span>
-                    <span className="block font-mono text-xs text-neutral-400">{m.cod}</span>
-                    <span className="mt-1 block text-xs text-neutral-500">
+                    <span className="block text-sm font-medium text-ink">{m.denumire}</span>
+                    <span className="block font-mono text-xs text-ink-muted">{m.cod}</span>
+                    <span className="mt-1 block text-xs text-ink-muted">
                       {m.familie} · {m.nrDimensiuni} dimensiuni
-                      {m.nrRetete === 0 && <span className="text-amber-700"> · fără rețetă</span>}
+                      {m.nrRetete === 0 && <span className="text-atentie"> · fără rețetă</span>}
                     </span>
                   </button>
                 </li>
               ))}
-              {modele.data?.length === 0 && (
-                <li className="px-4 py-6 text-sm text-neutral-500">
-                  Niciun model încă. Începe cu unul.
-                </li>
-              )}
             </ul>
+
+            {!modele.isLoading && !modele.isError && filtrate.length === 0 && (
+              <Gol
+                titlu={cauta === '' ? 'Niciun model încă' : 'Niciun model găsit'}
+                indiciu={
+                  cauta === '' ? 'Începe cu unul, în formularul de deasupra.' : `Nimic pentru „${cauta}".`
+                }
+              />
+            )}
           </div>
         </div>
 
         <div className="min-w-0 flex-1">
           {selectat === null ? (
-            <p className="text-sm text-neutral-500">
-              Alege un model din stânga ca să-i vezi dimensiunile și rețeta.
-            </p>
+            <Gol
+              titlu="Alege un model din stânga"
+              indiciu="Ca să-i vezi dimensiunile, rețeta și versiunile."
+            />
           ) : (
-            <DetaliuModel modelId={selectat} poateEdita={poateEdita} utilizator={utilizator} />
+            <DetaliuModel
+              modelId={selectat}
+              poateEdita={poateEdita}
+              utilizator={utilizator}
+              onModificat={onModificat}
+            />
           )}
         </div>
       </div>
@@ -101,6 +166,7 @@ export function Modele({ utilizator }: { utilizator: UtilizatorCurent }) {
 
 function FormularModel() {
   const queryClient = useQueryClient()
+  const notificari = useNotificari()
   const [cod, setCod] = useState('')
   const [denumire, setDenumire] = useState('')
   const [familie, setFamilie] = useState<string>('PAT')
@@ -108,10 +174,12 @@ function FormularModel() {
   const creeaza = useMutation({
     mutationFn: () => apel('/modele', { metoda: 'POST', corp: { cod, denumire, familie } }),
     onSuccess: async () => {
+      notificari.succes(`Modelul ${cod} a fost creat.`)
       setCod('')
       setDenumire('')
       await queryClient.invalidateQueries({ queryKey: ['modele'] })
     },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
   })
 
   function trimite(eveniment: FormEvent) {
@@ -120,44 +188,56 @@ function FormularModel() {
   }
 
   return (
-    <form onSubmit={trimite} className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Model nou</h2>
+    <form onSubmit={trimite} className="card space-y-3 p-4">
+      <h2 className="text-sm font-semibold text-ink">Model nou</h2>
 
-      <input
-        value={cod}
-        onChange={(e) => setCod(e.target.value.toUpperCase())}
-        placeholder="PAT-DAVID"
-        required
-        className="w-full rounded-md border border-neutral-300 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-900"
-      />
-      <input
-        value={denumire}
-        onChange={(e) => setDenumire(e.target.value)}
-        placeholder="PAT DAVID SOMIERA"
-        required
-        className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"
-      />
-      <select
-        value={familie}
-        onChange={(e) => setFamilie(e.target.value)}
-        className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-      >
-        {FAMILII.map((f) => (
-          <option key={f} value={f}>
-            {f}
-          </option>
-        ))}
-      </select>
+      <div>
+        <label htmlFor="cod-model" className="eticheta">
+          Cod
+        </label>
+        <input
+          id="cod-model"
+          value={cod}
+          onChange={(e) => setCod(e.target.value.toUpperCase())}
+          placeholder="PAT-DAVID"
+          required
+          className="camp font-mono"
+        />
+      </div>
 
-      {creeaza.isError && (
-        <p className="text-sm text-red-700">{(creeaza.error as EroareApi).message}</p>
-      )}
+      <div>
+        <label htmlFor="denumire-model" className="eticheta">
+          Denumire
+        </label>
+        <input
+          id="denumire-model"
+          value={denumire}
+          onChange={(e) => setDenumire(e.target.value)}
+          placeholder="PAT DAVID SOMIERA"
+          required
+          className="camp"
+        />
+      </div>
 
-      <button
-        type="submit"
-        disabled={creeaza.isPending}
-        className="w-full rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
+      <div>
+        <label htmlFor="familie-model" className="eticheta">
+          Familie
+        </label>
+        <select
+          id="familie-model"
+          value={familie}
+          onChange={(e) => setFamilie(e.target.value)}
+          className="camp"
+        >
+          {FAMILII.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <button type="submit" disabled={creeaza.isPending} className="buton buton-primar w-full">
         {creeaza.isPending ? 'Se creează…' : 'Creează modelul'}
       </button>
     </form>
@@ -168,31 +248,56 @@ function DetaliuModel({
   modelId,
   poateEdita,
   utilizator,
+  onModificat,
 }: {
   modelId: string
   poateEdita: boolean
   utilizator: UtilizatorCurent
+  onModificat: (modificat: boolean) => void
 }) {
   const detaliu = useQuery({
     queryKey: ['model', modelId],
     queryFn: () => apel<Detaliu>(`/modele/${modelId}`),
   })
 
-  if (detaliu.isLoading) return <p className="text-sm text-neutral-500">Se încarcă…</p>
+  if (detaliu.isLoading) {
+    return (
+      <div className="space-y-3">
+        <Schelet className="h-6 w-64" />
+        <Schelet className="h-32 w-full" />
+      </div>
+    )
+  }
+
+  if (detaliu.isError) {
+    return (
+      <BannerEroare
+        eroare={detaliu.error}
+        titlu="Modelul nu s-a putut încărca."
+        onReincearca={() => void detaliu.refetch()}
+      />
+    )
+  }
+
   if (detaliu.data === undefined) return null
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-neutral-900">{detaliu.data.denumire}</h2>
-        <p className="font-mono text-xs text-neutral-400">{detaliu.data.cod}</p>
+        <h2 className="text-lg font-semibold text-ink">{detaliu.data.denumire}</h2>
+        <p className="font-mono text-xs text-ink-muted">{detaliu.data.cod}</p>
       </div>
 
       <Dimensiuni modelId={modelId} dimensiuni={detaliu.data.dimensiuni} poateEdita={poateEdita} />
 
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-neutral-900">Rețetă</h3>
-        <RetetaEditor modelId={modelId} poateEdita={poateEdita} utilizator={utilizator} />
+        <h3 className="mb-3 text-sm font-semibold text-ink">Rețetă</h3>
+        <RetetaEditor
+          modelId={modelId}
+          poateEdita={poateEdita}
+          utilizator={utilizator}
+          onModificat={onModificat}
+        />
       </div>
     </div>
   )
@@ -208,12 +313,13 @@ function Dimensiuni({
   poateEdita: boolean
 }) {
   const queryClient = useQueryClient()
+  const notificari = useNotificari()
   const [deschis, setDeschis] = useState(false)
   const [cod, setCod] = useState('')
   const [lungime, setLungime] = useState('')
   const [latime, setLatime] = useState('')
   const [inaltime, setInaltime] = useState('')
-  const [codSagaProdus, setCodSagaProdus] = useState('')
+  const [produs, setProdus] = useState<{ codSaga: string; denumire: string } | null>(null)
 
   const creeaza = useMutation({
     mutationFn: () =>
@@ -224,19 +330,21 @@ function Dimensiuni({
           lungime,
           latime,
           inaltime: inaltime === '' ? null : inaltime,
-          codSagaProdus: codSagaProdus === '' ? null : codSagaProdus,
+          codSagaProdus: produs?.codSaga ?? null,
         },
       }),
     onSuccess: async () => {
+      notificari.succes(`Dimensiunea ${cod} a fost adăugată.`)
       setCod('')
       setLungime('')
       setLatime('')
       setInaltime('')
-      setCodSagaProdus('')
+      setProdus(null)
       setDeschis(false)
       await queryClient.invalidateQueries({ queryKey: ['model', modelId] })
       await queryClient.invalidateQueries({ queryKey: ['reteta', modelId] })
     },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
   })
 
   function trimite(eveniment: FormEvent) {
@@ -247,12 +355,12 @@ function Dimensiuni({
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-neutral-900">Dimensiuni</h3>
+        <h3 className="text-sm font-semibold text-ink">Dimensiuni</h3>
         {poateEdita && (
           <button
             type="button"
             onClick={() => setDeschis((d) => !d)}
-            className="rounded-md border border-neutral-300 px-3 py-1 text-xs"
+            className="buton buton-secundar buton-mic"
           >
             {deschis ? 'Renunță' : 'Adaugă dimensiune'}
           </button>
@@ -260,60 +368,91 @@ function Dimensiuni({
       </div>
 
       {deschis && (
-        <form
-          onSubmit={trimite}
-          className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-neutral-200 bg-white p-4"
-        >
+        <form onSubmit={trimite} className="card mb-3 flex flex-wrap items-end gap-3 p-4">
           <Camp eticheta="Cod" valoare={cod} set={setCod} latime="w-32" placeholder="2000x1600" />
-          <Camp eticheta="Lungime (mm)" valoare={lungime} set={setLungime} latime="w-28" placeholder="2000" />
-          <Camp eticheta="Lățime (mm)" valoare={latime} set={setLatime} latime="w-28" placeholder="1600" />
-          <Camp eticheta="Înălțime (mm)" valoare={inaltime} set={setInaltime} latime="w-28" placeholder="350" optional />
           <Camp
-            eticheta="Cod SAGA produs"
-            valoare={codSagaProdus}
-            set={setCodSagaProdus}
-            latime="w-36"
-            placeholder="00022107"
+            eticheta="Lungime (mm)"
+            valoare={lungime}
+            set={setLungime}
+            latime="w-28"
+            placeholder="2000"
+          />
+          <Camp
+            eticheta="Lățime (mm)"
+            valoare={latime}
+            set={setLatime}
+            latime="w-28"
+            placeholder="1600"
+          />
+          <Camp
+            eticheta="Înălțime (mm)"
+            valoare={inaltime}
+            set={setInaltime}
+            latime="w-28"
+            placeholder="350"
             optional
           />
-          <button
-            type="submit"
-            disabled={creeaza.isPending}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
+
+          <div>
+            <span className="eticheta">Produs finit în SAGA</span>
+            {produs === null ? (
+              <CautaArticol
+                clasa="camp w-72"
+                placeholder="caută produsul finit…"
+                onAlege={(a) => setProdus({ codSaga: a.codSaga, denumire: a.denumire })}
+              />
+            ) : (
+              <span className="flex h-10 items-center gap-2 text-sm">
+                <span className="font-mono text-xs">{produs.codSaga}</span>
+                <span className="text-ink">{produs.denumire}</span>
+                <button
+                  type="button"
+                  onClick={() => setProdus(null)}
+                  className="text-xs text-brand underline underline-offset-2"
+                >
+                  schimbă
+                </button>
+              </span>
+            )}
+          </div>
+
+          <button type="submit" disabled={creeaza.isPending} className="buton buton-primar">
             Adaugă
           </button>
-          {creeaza.isError && (
-            <p className="w-full text-sm text-red-700">{(creeaza.error as EroareApi).message}</p>
-          )}
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-500">
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full text-sm" aria-label="Dimensiunile modelului">
+          <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
             <tr>
-              <th className="px-4 py-2 font-medium">Cod</th>
-              <th className="px-4 py-2 font-medium">L × l × H (mm)</th>
-              <th className="px-4 py-2 font-medium">Produs finit în SAGA</th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Cod
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                L × l × H (mm)
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Produs finit în SAGA
+              </th>
             </tr>
           </thead>
           <tbody>
             {dimensiuni.map((d) => (
-              <tr key={d.id} className="border-b border-neutral-100 last:border-0">
+              <tr key={d.id} className="border-t border-line hover:bg-surface-page">
                 <td className="px-4 py-2 font-medium">{d.cod}</td>
-                <td className="px-4 py-2 tabular-nums text-neutral-600">
+                <td className="px-4 py-2 tabular-nums text-ink-secondary">
                   {mm(d.lungime)} × {mm(d.latime)}
                   {d.inaltime !== null && ` × ${mm(d.inaltime)}`}
                 </td>
-                <td className="px-4 py-2 text-neutral-600">
+                <td className="px-4 py-2 text-ink-secondary">
                   {d.codSagaProdus === null ? (
-                    <span className="text-amber-700">nelegat — bonul nu se poate emite</span>
+                    <Insigna fel="atentie">nelegat — bonul nu se poate emite</Insigna>
                   ) : (
                     <>
                       <span className="font-mono text-xs">{d.codSagaProdus}</span>
                       {d.denumireProdus !== null && (
-                        <span className="ml-2 text-neutral-400">{d.denumireProdus}</span>
+                        <span className="ml-2 text-ink-muted">{d.denumireProdus}</span>
                       )}
                     </>
                   )}
@@ -322,8 +461,11 @@ function Dimensiuni({
             ))}
             {dimensiuni.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-neutral-500">
-                  Nicio dimensiune. Rețeta are nevoie de cel puțin una.
+                <td colSpan={3}>
+                  <Gol
+                    titlu="Nicio dimensiune"
+                    indiciu="Rețeta are nevoie de cel puțin una: formulele se evaluează pe L, l și H."
+                  />
                 </td>
               </tr>
             )}
@@ -350,14 +492,14 @@ function Camp({
   optional?: boolean
 }) {
   return (
-    <label className="space-y-1">
-      <span className="block text-xs font-medium text-neutral-600">{eticheta}</span>
+    <label className="block">
+      <span className="eticheta">{eticheta}</span>
       <input
         value={valoare}
         onChange={(e) => set(e.target.value)}
         placeholder={placeholder}
         required={optional !== true}
-        className={`${latime} rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900`}
+        className={`camp ${latime}`}
       />
     </label>
   )

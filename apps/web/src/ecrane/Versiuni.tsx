@@ -2,7 +2,9 @@ import type { RandVersiune, SchimbareLinie, UtilizatorCurent } from '@samobi/sha
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { apel, EroareApi } from '../lib/api.js'
+import { apel } from '../lib/api.js'
+import { useNotificari } from '../ui/Notificari.js'
+import { Insigna, mesajEroare } from '../ui/stari.js'
 
 interface Comparatie {
   veche: { versiune: number; status: string }
@@ -18,11 +20,11 @@ const ETICHETE_STATUS: Record<string, string> = {
   arhivata: 'arhivată',
 }
 
-function culoareStatus(status: string): string {
-  if (status === 'activa') return 'bg-green-50 text-green-700'
-  if (status === 'in_aprobare') return 'bg-amber-50 text-amber-800'
-  if (status === 'arhivata') return 'bg-neutral-100 text-neutral-500'
-  return 'bg-blue-50 text-blue-700'
+function felStatus(status: string): 'succes' | 'atentie' | 'neutru' | 'info' {
+  if (status === 'activa') return 'succes'
+  if (status === 'in_aprobare') return 'atentie'
+  if (status === 'arhivata') return 'neutru'
+  return 'info'
 }
 
 const ETICHETE_CAMP: Record<string, string> = {
@@ -32,6 +34,12 @@ const ETICHETE_CAMP: Record<string, string> = {
   cantitateFixa: 'cantitate',
   formula: 'formulă',
   procentPierderi: 'pierderi',
+}
+
+const ETICHETE_FEL: Record<string, string> = {
+  adaugat: 'adăugată',
+  sters: 'ștearsă',
+  modificat: 'modificată',
 }
 
 /**
@@ -45,17 +53,22 @@ export function Versiuni({
   modelId,
   versiuneCurenta,
   utilizator,
+  areModificari,
   onSchimbaVersiune,
 }: {
   modelId: string
   versiuneCurenta: string | null
   utilizator: UtilizatorCurent
+  /** Unsaved lines in the grid: several actions here would send the wrong thing. */
+  areModificari: boolean
   onSchimbaVersiune: (id: string | null) => void
 }) {
   const queryClient = useQueryClient()
+  const notificari = useNotificari()
   const [compara, setCompara] = useState<string | null>(null)
   const [motivRespingere, setMotivRespingere] = useState('')
   const [aratRespingere, setAratRespingere] = useState(false)
+  const [confirmaAprobare, setConfirmaAprobare] = useState(false)
 
   const esteAdmin = utilizator.rol === 'admin'
   const poateEdita = esteAdmin || utilizator.rol === 'tehnolog'
@@ -71,63 +84,73 @@ export function Versiuni({
     versiuni.data?.find((v) => v.status === 'activa') ??
     versiuni.data?.[0]
 
+  const activa = versiuni.data?.find((v) => v.status === 'activa')
+
   async function reincarca() {
     await queryClient.invalidateQueries({ queryKey: ['versiuni', modelId] })
     await queryClient.invalidateQueries({ queryKey: ['reteta', modelId] })
   }
 
   const actiune = useMutation({
-    mutationFn: (v: { cale: string; corp?: unknown }) =>
+    mutationFn: (v: { cale: string; corp?: unknown; mesaj: string }) =>
       apel(v.cale, { metoda: 'POST', ...(v.corp === undefined ? {} : { corp: v.corp }) }),
-    onSuccess: async () => {
+    onSuccess: async (_r, v) => {
       setAratRespingere(false)
+      setConfirmaAprobare(false)
       setMotivRespingere('')
+      notificari.succes(v.mesaj)
       await reincarca()
     },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
   })
 
   const versiuneNoua = useMutation({
     mutationFn: () => apel<{ id: string }>(`/modele/${modelId}/versiuni`, { metoda: 'POST' }),
     onSuccess: async (noua) => {
+      notificari.succes('Versiune nouă creată. Rețeta activă a rămas neatinsă.')
       onSchimbaVersiune(noua.id)
       await reincarca()
     },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
   })
 
+  // What the approval would actually change, shown before it is irreversible.
+  const comparaCu = confirmaAprobare && activa !== undefined ? activa.id : compara
+
   const comparatie = useQuery({
-    queryKey: ['comparatie', curenta?.id, compara],
-    queryFn: () => apel<Comparatie>(`/retete/${curenta?.id ?? ''}/comparatie/${compara ?? ''}`),
-    enabled: curenta !== undefined && compara !== null,
+    queryKey: ['comparatie', curenta?.id, comparaCu],
+    queryFn: () => apel<Comparatie>(`/retete/${curenta?.id ?? ''}/comparatie/${comparaCu ?? ''}`),
+    enabled: curenta !== undefined && comparaCu !== null && comparaCu !== curenta?.id,
   })
 
   if (versiuni.isLoading || curenta === undefined) return null
 
-  const eroare = [actiune.error, versiuneNoua.error].find((e): e is EroareApi => e instanceof EroareApi)
-
   return (
-    <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4">
+    <div className="card space-y-3 p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-semibold text-neutral-900">Versiuni</span>
+        <span className="text-sm font-semibold text-ink">Versiuni</span>
 
         <select
           value={curenta.id}
+          aria-label="Versiunea afișată"
           onChange={(e) => onSchimbaVersiune(e.target.value)}
-          className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+          className="camp camp-mic w-72"
         >
           {versiuni.data?.map((v) => (
             <option key={v.id} value={v.id}>
-              v{v.versiune} · {ETICHETE_STATUS[v.status] ?? v.status} · {v.nrLinii} linii
+              {v.status === 'activa' ? '● ' : ''}v{v.versiune} ·{' '}
+              {ETICHETE_STATUS[v.status] ?? v.status} · {v.nrLinii} linii
               {v.nrBonuri > 0 && ` · ${v.nrBonuri} bonuri`}
             </option>
           ))}
         </select>
 
-        <span className={`rounded-full px-2 py-1 text-xs ${culoareStatus(curenta.status)}`}>
+        <Insigna fel={felStatus(curenta.status)}>
           {ETICHETE_STATUS[curenta.status] ?? curenta.status}
-        </span>
+        </Insigna>
 
         {curenta.nrBonuri > 0 && (
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-ink-muted">
             {curenta.nrBonuri} {curenta.nrBonuri === 1 ? 'bon emis' : 'bonuri emise'} pe această
             versiune
           </span>
@@ -135,43 +158,55 @@ export function Versiuni({
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {poateEdita && curenta.status === 'draft' && (
-            <button
-              type="button"
-              disabled={actiune.isPending || curenta.nrLinii === 0}
-              onClick={() =>
-                actiune.mutate({ cale: `/retete/${curenta.id}/trimite-spre-aprobare` })
-              }
-              className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-            >
-              Trimite spre aprobare
-            </button>
+            <>
+              {areModificari && (
+                <span className="text-xs text-atentie">Salvează întâi modificările din grilă.</span>
+              )}
+              <button
+                type="button"
+                disabled={actiune.isPending || curenta.nrLinii === 0 || areModificari}
+                onClick={() =>
+                  actiune.mutate({
+                    cale: `/retete/${curenta.id}/trimite-spre-aprobare`,
+                    mesaj: `v${curenta.versiune} a fost trimisă spre aprobare.`,
+                  })
+                }
+                className="buton buton-primar buton-mic"
+              >
+                Trimite spre aprobare
+              </button>
+            </>
           )}
 
           {poateEdita && curenta.status === 'in_aprobare' && (
             <button
               type="button"
               disabled={actiune.isPending}
-              onClick={() => actiune.mutate({ cale: `/retete/${curenta.id}/retragere` })}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+              onClick={() =>
+                actiune.mutate({
+                  cale: `/retete/${curenta.id}/retragere`,
+                  mesaj: `v${curenta.versiune} a fost retrasă din aprobare.`,
+                })
+              }
+              className="buton buton-secundar buton-mic"
             >
               Retrage
             </button>
           )}
 
-          {esteAdmin && curenta.status === 'in_aprobare' && (
+          {esteAdmin && curenta.status === 'in_aprobare' && !confirmaAprobare && (
             <>
               <button
                 type="button"
-                disabled={actiune.isPending}
-                onClick={() => actiune.mutate({ cale: `/retete/${curenta.id}/aprobare` })}
-                className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+                onClick={() => setConfirmaAprobare(true)}
+                className="buton buton-primar buton-mic"
               >
                 Aprobă
               </button>
               <button
                 type="button"
                 onClick={() => setAratRespingere((a) => !a)}
-                className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+                className="buton buton-secundar buton-mic"
               >
                 Respinge
               </button>
@@ -183,7 +218,7 @@ export function Versiuni({
               type="button"
               disabled={versiuneNoua.isPending}
               onClick={() => versiuneNoua.mutate()}
-              className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              className="buton buton-primar buton-mic"
             >
               {versiuneNoua.isPending ? 'Se creează…' : 'Versiune nouă'}
             </button>
@@ -191,13 +226,66 @@ export function Versiuni({
         </div>
       </div>
 
+      {curenta.motivRespingere !== null && curenta.status === 'draft' && (
+        <div className="rounded-lg border border-atentie-border bg-atentie-bg px-3 py-2 text-sm">
+          <p className="font-medium text-atentie">
+            Respinsă
+            {curenta.respinsLa === null
+              ? ''
+              : ` la ${new Date(curenta.respinsLa).toLocaleDateString('ro-RO')}`}
+          </p>
+          <p className="mt-0.5 text-ink-secondary">„{curenta.motivRespingere}"</p>
+        </div>
+      )}
+
+      {confirmaAprobare && (
+        <div className="rounded-lg border border-brand-border bg-brand-subtle p-3">
+          <p className="text-sm font-medium text-ink">
+            v{curenta.versiune} devine activă
+            {activa === undefined ? '.' : `, iar v${activa.versiune} se arhivează.`}
+          </p>
+          <p className="mt-0.5 text-sm text-ink-secondary">
+            Bonurile se vor emite pe ea. Rețetele active nu se mai modifică.
+          </p>
+          {comparatie.data !== undefined && (
+            <p className="mt-1 text-sm text-ink-secondary">
+              Față de v{activa?.versiune}: {comparatie.data.rezumat.adaugate} adăugate,{' '}
+              {comparatie.data.rezumat.sterse} șterse, {comparatie.data.rezumat.modificate}{' '}
+              modificate.
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={actiune.isPending}
+              onClick={() =>
+                actiune.mutate({
+                  cale: `/retete/${curenta.id}/aprobare`,
+                  mesaj: `v${curenta.versiune} este acum activă.`,
+                })
+              }
+              className="buton buton-primar buton-mic"
+            >
+              Confirmă aprobarea
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmaAprobare(false)}
+              className="buton buton-discret buton-mic"
+            >
+              Renunță
+            </button>
+          </div>
+        </div>
+      )}
+
       {aratRespingere && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md bg-amber-50 p-3">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-sunken p-3">
           <input
             value={motivRespingere}
             onChange={(e) => setMotivRespingere(e.target.value)}
-            placeholder="De ce o respingi? Tehnologul trebuie să știe ce să corecteze."
-            className="w-96 rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            placeholder="De ce o respingi? Tehnologul vede exact acest text."
+            className="camp camp-mic w-96"
           />
           <button
             type="button"
@@ -206,34 +294,35 @@ export function Versiuni({
               actiune.mutate({
                 cale: `/retete/${curenta.id}/respingere`,
                 corp: { motiv: motivRespingere },
+                mesaj: `v${curenta.versiune} a fost respinsă. Tehnologul vede motivul.`,
               })
             }
-            className="rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            className="buton buton-pericol-plin buton-mic"
           >
             Trimite respingerea
           </button>
         </div>
       )}
 
-      {eroare && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{eroare.message}</p>
-      )}
-
       {curenta.status === 'activa' && (
-        <p className="text-xs text-neutral-500">
-          Aprobată {curenta.aprobatLa === null ? '' : new Date(curenta.aprobatLa).toLocaleDateString('ro-RO')}
+        <p className="text-xs text-ink-muted">
+          Aprobată{' '}
+          {curenta.aprobatLa === null
+            ? ''
+            : new Date(curenta.aprobatLa).toLocaleDateString('ro-RO')}
           {curenta.valabilDeLa !== null && `, valabilă de la ${curenta.valabilDeLa}`}. Nu se mai
           modifică — orice schimbare înseamnă o versiune nouă.
         </p>
       )}
 
-      {(versiuni.data?.length ?? 0) > 1 && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-3">
-          <span className="text-xs text-neutral-500">Compară v{curenta.versiune} cu</span>
+      {(versiuni.data?.length ?? 0) > 1 && !confirmaAprobare && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          <span className="text-xs text-ink-muted">Compară v{curenta.versiune} cu</span>
           <select
             value={compara ?? ''}
+            aria-label="Versiunea de comparat"
             onChange={(e) => setCompara(e.target.value === '' ? null : e.target.value)}
-            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            className="camp camp-mic w-56"
           >
             <option value="">alege versiunea…</option>
             {versiuni.data
@@ -247,7 +336,7 @@ export function Versiuni({
         </div>
       )}
 
-      {comparatie.data !== undefined && (
+      {comparatie.data !== undefined && !confirmaAprobare && (
         <TabelComparatie comparatie={comparatie.data} />
       )}
     </div>
@@ -258,44 +347,38 @@ function TabelComparatie({ comparatie }: { comparatie: Comparatie }) {
   const schimbate = comparatie.schimbari.filter((s) => s.fel !== 'neschimbat')
 
   return (
-    <div className="rounded-md border border-neutral-200">
-      <div className="flex flex-wrap gap-4 border-b border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
-        <span className="text-green-700">{comparatie.rezumat.adaugate} adăugate</span>
-        <span className="text-red-700">{comparatie.rezumat.sterse} șterse</span>
-        <span className="text-amber-700">{comparatie.rezumat.modificate} modificate</span>
-        <span className="text-neutral-500">{comparatie.rezumat.neschimbate} neschimbate</span>
+    <div className="rounded-lg border border-line">
+      <div className="flex flex-wrap gap-4 border-b border-line bg-surface-sunken px-3 py-2 text-xs">
+        <span className="text-succes">{comparatie.rezumat.adaugate} adăugate</span>
+        <span className="text-danger">{comparatie.rezumat.sterse} șterse</span>
+        <span className="text-atentie">{comparatie.rezumat.modificate} modificate</span>
+        <span className="text-ink-muted">{comparatie.rezumat.neschimbate} neschimbate</span>
       </div>
 
       {schimbate.length === 0 ? (
-        <p className="px-3 py-4 text-sm text-neutral-500">
-          Versiunile sunt identice linie cu linie.
-        </p>
+        <p className="px-3 py-4 text-sm text-ink-muted">Versiunile sunt identice linie cu linie.</p>
       ) : (
-        <ul className="divide-y divide-neutral-100">
+        <ul className="divide-y divide-line">
           {schimbate.map((s) => (
             <li key={s.nrLinie} className="px-3 py-2 text-sm">
-              <span
-                className={
-                  s.fel === 'adaugat'
-                    ? 'mr-2 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800'
-                    : s.fel === 'sters'
-                      ? 'mr-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800'
-                      : 'mr-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800'
-                }
-              >
-                {s.fel}
+              <span className="mr-2">
+                <Insigna
+                  fel={s.fel === 'adaugat' ? 'succes' : s.fel === 'sters' ? 'pericol' : 'atentie'}
+                >
+                  {ETICHETE_FEL[s.fel] ?? s.fel}
+                </Insigna>
               </span>
-              <span className="text-neutral-400">linia {s.nrLinie}</span>{' '}
+              <span className="text-ink-muted">linia {s.nrLinie}</span>{' '}
               <span className="font-mono text-xs">{s.codSaga ?? '—'}</span>{' '}
-              <span className="text-neutral-700">{s.denumire ?? ''}</span>
+              <span className="text-ink-secondary">{s.denumire ?? ''}</span>
 
               {s.campuri.length > 0 && (
-                <ul className="ml-6 mt-1 space-y-0.5 text-xs text-neutral-600">
+                <ul className="mt-1 ml-6 space-y-0.5 text-xs text-ink-secondary">
                   {s.campuri.map((c) => (
                     <li key={c.camp}>
                       {ETICHETE_CAMP[c.camp] ?? c.camp}:{' '}
-                      <span className="text-red-700 line-through">{c.inainte ?? '—'}</span> →{' '}
-                      <span className="font-medium text-green-700">{c.dupa ?? '—'}</span>
+                      <span className="text-danger line-through">{c.inainte ?? '—'}</span> →{' '}
+                      <span className="font-medium text-succes">{c.dupa ?? '—'}</span>
                     </li>
                   ))}
                 </ul>

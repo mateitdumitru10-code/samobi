@@ -76,6 +76,8 @@ export function ruteVersiuni(app: FastifyInstance, verifica: VerificatorToken) {
       valabilDeLa: v.valabilDeLa,
       aprobatDe: v.aprobatDe,
       aprobatLa: v.aprobatLa?.toISOString() ?? null,
+      motivRespingere: v.motivRespingere,
+      respinsLa: v.respinsLa?.toISOString() ?? null,
       creatLa: v.creatLa.toISOString(),
       nrLinii: linii.get(v.id) ?? 0,
       // Bons pin a version. A version with bons against it can never be edited.
@@ -218,7 +220,12 @@ export function ruteVersiuni(app: FastifyInstance, verifica: VerificatorToken) {
       throw new CerereInvalida('O rețetă fără linii nu se aprobă.')
     }
 
-    await db.update(recipe).set({ status: 'in_aprobare' }).where(eq(recipe.id, id))
+    // A new submission clears the previous refusal: whatever it said is either
+    // fixed or deliberately unchanged, and either way it is no longer pending.
+    await db
+      .update(recipe)
+      .set({ status: 'in_aprobare', motivRespingere: null, respinsDe: null, respinsLa: null })
+      .where(eq(recipe.id, id))
 
     await scrieAudit(cerere, {
       userId: utilizator.id,
@@ -297,9 +304,18 @@ export function ruteVersiuni(app: FastifyInstance, verifica: VerificatorToken) {
       throw new Conflict(`Se respinge doar ce așteaptă aprobare. Rețeta este ${reteta.status}.`)
     }
 
-    await db.update(recipe).set({ status: 'draft' }).where(eq(recipe.id, id))
+    await db
+      .update(recipe)
+      .set({
+        status: 'draft',
+        motivRespingere: motiv,
+        respinsDe: utilizator.id,
+        respinsLa: new Date(),
+      })
+      .where(eq(recipe.id, id))
 
-    // The reason lives in the audit trail, which cannot be rewritten.
+    // Also in the audit trail, which cannot be rewritten; on the recipe so the
+    // tehnolog actually reads it.
     await scrieAudit(cerere, {
       userId: utilizator.id,
       entitate: 'recipe',

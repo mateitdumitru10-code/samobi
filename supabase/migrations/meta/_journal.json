@@ -36,6 +36,13 @@
       "when": 1786373428800,
       "tag": "20260810145028_amanare_nemapate",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786374344136,
+      "tag": "20260810150544_motiv_respingere",
+      "breakpoints": true
     }
   ]
 }

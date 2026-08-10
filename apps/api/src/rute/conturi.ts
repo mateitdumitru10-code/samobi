@@ -19,7 +19,7 @@ const DURATA_BAN = '876000h'
 export function ruteConturi(app: FastifyInstance, verifica: VerificatorToken) {
   const doarAdmin = { preHandler: [autentifica(verifica), ceruRol('admin')] }
 
-  app.get('/conturi', doarAdmin, async () => {
+  app.get('/conturi', doarAdmin, async (cerere) => {
     const randuri = await db
       .select({
         id: profile.id,
@@ -31,7 +31,65 @@ export function ruteConturi(app: FastifyInstance, verifica: VerificatorToken) {
       .from(profile)
       .orderBy(asc(profile.nume))
 
-    return randuri.map((r) => ({ ...r, creatLa: r.creatLa.toISOString() }))
+    // The email is the field the admin typed and the only thing that tells two
+    // people with the same name apart; it lives in auth.users, which is
+    // Supabase's, so it is read through their API rather than joined to.
+    const dinAuth = new Map<string, { email: string | null; aIntrat: boolean }>()
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ perPage: 200 })
+    if (error !== null) {
+      cerere.log.warn({ err: error }, 'nu am putut citi utilizatorii din auth')
+    } else {
+      for (const u of data.users) {
+        dinAuth.set(u.id, {
+          email: u.email ?? null,
+          aIntrat: u.last_sign_in_at != null,
+        })
+      }
+    }
+
+    return randuri.map((r) => ({
+      ...r,
+      creatLa: r.creatLa.toISOString(),
+      email: dinAuth.get(r.id)?.email ?? null,
+      /** Invited but never signed in: their link may well have expired. */
+      invitat: dinAuth.get(r.id)?.aIntrat === false,
+    }))
+  })
+
+  /** Re-sends the invitation email. The old link stops working. */
+  app.post('/conturi/:id/reinvitare', doarAdmin, async (cerere) => {
+    const { id } = schemaParametruId.parse(cerere.params)
+    const admin = utilizatorul(cerere)
+
+    const [cont] = await db.select().from(profile).where(eq(profile.id, id)).limit(1)
+    if (cont === undefined) throw new NuExista('Contul nu există.')
+
+    const { data: utilizatorAuth, error: eroareCitire } =
+      await supabaseAdmin.auth.admin.getUserById(id)
+    if (eroareCitire !== null || utilizatorAuth.user?.email == null) {
+      throw new NuExista('Contul nu are un email în Supabase Auth.')
+    }
+    if (utilizatorAuth.user.last_sign_in_at != null) {
+      throw new Conflict('Contul a fost deja activat. Folosește resetarea de parolă.')
+    }
+
+    const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(utilizatorAuth.user.email, {
+      data: { nume: cont.nume, rol: cont.rol, creat_de: admin.id },
+      redirectTo: urlActivare,
+    })
+    if (error !== null) {
+      throw new CerereInvalida(`Invitația nu a putut fi retrimisă: ${error.message}`)
+    }
+
+    await scrieAudit(cerere, {
+      userId: admin.id,
+      entitate: 'profile',
+      entitateId: id,
+      actiune: 'modificare',
+      diff: { reinvitare: utilizatorAuth.user.email },
+    })
+
+    return { id, email: utilizatorAuth.user.email }
   })
 
   /**
