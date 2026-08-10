@@ -97,13 +97,13 @@ foaie.addRow([
   'Denumire',
   'Familie',
   'Dimensiune',
-  'L acum',
-  'l acum',
-  'H acum',
+  'Lungime acum',
+  'Latime acum',
+  'Inaltime acum',
   'Din import?',
-  'L REAL  ←',
-  'l REAL  ←',
-  'H REAL  ←',
+  'Lungime REALA  ←',
+  'Latime REALA  ←',
+  'Inaltime REALA  ←',
   'Produs finit în SAGA',
   'Bonuri',
 ])
@@ -158,7 +158,7 @@ console.log(`${randuri.length} dimensiuni pe ${new Set(randuri.map((r) => r.mode
 console.log(`  ${sabloane} au măsuri puse de scriptul de import — nu descriu nimic real`)
 console.log(`  ${dePus} au o propunere citită din denumirea articolului SAGA`)
 console.log('\nScris în docs/dimensiuni-reale.xlsx.')
-console.log('Completează „L REAL / l REAL / H REAL" — propunerile sunt doar un punct de plecare,')
+console.log('Completează „Lungime/Latime/Inaltime REALA" — propunerile sunt un punct de plecare,')
 console.log('și nici catalogul nu știe care număr e lungimea. Apoi:')
 console.log('  pnpm --filter @samobi/api aplica-dimensiuni -- --scrie')
 

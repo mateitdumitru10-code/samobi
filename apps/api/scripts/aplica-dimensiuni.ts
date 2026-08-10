@@ -33,9 +33,12 @@ const coloana = (nume: string): number => {
 
 const cModel = coloana('Model')
 const cDimensiune = coloana('Dimensiune')
-const cL = coloana('L REAL')
-const cl = coloana('l REAL')
-const cH = coloana('H REAL')
+// Distinct words on purpose: the lookup is case-insensitive, so headers that
+// differ only by „L" versus „l" resolve to the same column and the width comes
+// out equal to the length.
+const cL = coloana('Lungime REALA')
+const cl = coloana('Latime REALA')
+const cH = coloana('Inaltime REALA')
 
 const intreg = (v: string | undefined): number | null => {
   const text = (v ?? '').trim()
