@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --env-file=.env src/server.ts",
     "start": "node dist/server.js",
     "build": "tsc --build tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx --env-file=.env scripts/seed.ts",
-    "bootstrap-admin": "tsx --env-file=.env scripts/bootstrap-admin.ts"
+    "bootstrap-admin": "tsx --env-file=.env scripts/bootstrap-admin.ts",
+    "link-activare": "tsx --env-file=.env scripts/link-activare.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

@@ -1,7 +1,7 @@
 import { schemaInvitatie } from '@samobi/shared/scheme'
 
 import { supabaseAdmin } from '../src/supabase.js'
-import { env } from '../src/env.js'
+import { urlActivare } from '../src/env.js'
 
 /**
  * Creates the first administrator.
@@ -41,7 +41,7 @@ if (adminExistent !== undefined) {
   process.exit(1)
 }
 
-const redirect = `${env.WEB_ORIGIN.split(',')[0]?.trim() ?? ''}/#/activare`
+const redirect = urlActivare
 
 const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(invitatie.email, {
   data: { nume: invitatie.nume, rol: 'admin' },

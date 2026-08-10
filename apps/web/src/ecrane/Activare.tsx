@@ -18,7 +18,8 @@ export function Activare({ areSesiune }: { areSesiune: boolean }) {
       if (parola.length < 8) throw new Error('Parola trebuie să aibă cel puțin 8 caractere.')
       const { error } = await supabase.auth.updateUser({ password: parola })
       if (error !== null) throw new Error(error.message)
-      window.location.hash = ''
+      // Leave the recovery fragment behind, and land on the app proper.
+      window.location.replace('/')
     },
   })
 

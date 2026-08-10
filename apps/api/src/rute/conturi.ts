@@ -9,7 +9,7 @@ import { autentifica, ceruRol, utilizatorul, type VerificatorToken } from '../au
 import { db } from '../db.js'
 import { CerereInvalida, Conflict, NuExista } from '../erori.js'
 import { supabaseAdmin } from '../supabase.js'
-import { env } from '../env.js'
+import { urlActivare } from '../env.js'
 
 const schemaParametruId = z.object({ id: z.string().uuid('Identificator invalid.') })
 
@@ -45,7 +45,7 @@ export function ruteConturi(app: FastifyInstance, verifica: VerificatorToken) {
 
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       data: { nume, rol, creat_de: admin.id },
-      redirectTo: `${env.WEB_ORIGIN.split(',')[0]?.trim() ?? ''}/#/activare`,
+      redirectTo: urlActivare,
     })
 
     if (error !== null) {

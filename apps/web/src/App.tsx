@@ -14,13 +14,32 @@ import { deconecteaza, useSesiuneSupabase, useUtilizator } from './lib/sesiune.j
  * between; it does not yet.
  */
 function useRuta() {
-  const [ruta, setRuta] = useState(window.location.hash)
+  const [ruta, setRuta] = useState(window.location.pathname + window.location.hash)
   useEffect(() => {
-    const asculta = () => setRuta(window.location.hash)
+    const asculta = () => setRuta(window.location.pathname + window.location.hash)
     window.addEventListener('hashchange', asculta)
-    return () => window.removeEventListener('hashchange', asculta)
+    window.addEventListener('popstate', asculta)
+    return () => {
+      window.removeEventListener('hashchange', asculta)
+      window.removeEventListener('popstate', asculta)
+    }
   }, [])
   return ruta
+}
+
+/**
+ * Activation arrives as a path, not a fragment. Supabase appends its own
+ * `#access_token=...` to whatever redirect it is given, so a target ending in
+ * `#/activare` would produce two fragments and supabase-js would never find the
+ * session. The `type=` check covers a link that landed on the site root because
+ * the redirect was not in the allow-list.
+ */
+function esteActivare(ruta: string): boolean {
+  return (
+    ruta.startsWith('/activare') ||
+    ruta.includes('type=invite') ||
+    ruta.includes('type=recovery')
+  )
 }
 
 export function App() {
@@ -28,7 +47,7 @@ export function App() {
   const { gata, areSesiune } = useSesiuneSupabase()
   const utilizator = useUtilizator(areSesiune)
 
-  if (ruta.startsWith('#/activare') || ruta.includes('type=invite')) {
+  if (esteActivare(ruta)) {
     return <Activare areSesiune={areSesiune} />
   }
 

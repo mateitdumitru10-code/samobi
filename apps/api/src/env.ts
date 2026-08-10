@@ -33,3 +33,16 @@ if (!parsed.success) {
 
 export const env = parsed.data
 export const allowedOrigins = env.WEB_ORIGIN.split(',').map((o) => o.trim())
+
+/**
+ * Where invitation and recovery links land.
+ *
+ * A path, never a fragment. Supabase appends its own `#access_token=...` to the
+ * redirect target, so a URL that already ends in `#/activare` produces
+ * `#/activare#access_token=...` — two fragments, which supabase-js cannot parse,
+ * and the session is silently never established.
+ *
+ * This exact string must also appear in `additional_redirect_urls` in
+ * supabase/config.toml, otherwise Supabase falls back to the site URL.
+ */
+export const urlActivare = `${allowedOrigins[0] ?? ''}/activare`
