@@ -41,6 +41,8 @@ interface LinieServer {
   obligatoriu: boolean
   observatii: string | null
   denumireMaterial: string | null
+  pretReferinta: string | null
+  umSaga: string | null
   valoriPeDimensiuni: ValoareServer[]
 }
 
@@ -75,6 +77,7 @@ interface Linie {
   procentPierderi: string
   gestiuneDescarcare: string
   observatii: string
+  pret: number | null
   valori: Record<string, Valoare>
 }
 
@@ -106,6 +109,7 @@ function dinServer(linie: LinieServer): Linie {
     procentPierderi: linie.procentPierderi,
     gestiuneDescarcare: linie.gestiuneDescarcare ?? '',
     observatii: linie.observatii ?? '',
+    pret: linie.pretReferinta === null ? null : Number(linie.pretReferinta),
     valori,
   }
 }
@@ -127,8 +131,28 @@ function linieNoua(nrLinie: number): Linie {
     procentPierderi: '0',
     gestiuneDescarcare: '',
     observatii: '',
+    pret: null,
     valori: {},
   }
+}
+
+/**
+ * The quantity a line contributes for one product, where it can be known here.
+ *
+ * `fixa` and `tabel` are in the grid already. A formula depends on L, l and H,
+ * and is evaluated by the server — the check panel below shows it, and the full
+ * costing lives in Rapoarte → Antecalculație.
+ */
+function cantitatePeDimensiune(linie: Linie, dimensiuneId: string): number | null {
+  const override = linie.valori[dimensiuneId]
+  if (override?.esteOverride === true) return Number(override.cantitate)
+  if (linie.modCalcul === 'fixa') {
+    return linie.cantitateFixa === '' ? null : Number(linie.cantitateFixa)
+  }
+  if (linie.modCalcul === 'tabel') {
+    return override === undefined ? null : Number(override.cantitate)
+  }
+  return null
 }
 
 /** Which fields a mode actually uses. Everything else is greyed out. */
@@ -384,6 +408,8 @@ export function RetetaEditor({
               <th className="px-2 py-2 font-medium">Cantitate</th>
               <th className="px-2 py-2 font-medium">Formulă</th>
               <th className="px-2 py-2 font-medium">Pierderi %</th>
+              <th className="px-2 py-2 text-right font-medium">Preț</th>
+              <th className="px-2 py-2 text-right font-medium">Valoare</th>
               {dimensiuni.map((d) => (
                 <th key={d.id} className="px-2 py-2 font-medium">
                   {d.cod}
@@ -522,6 +548,26 @@ export function RetetaEditor({
                     />
                   </td>
 
+                  <td className="px-2 py-1 text-right tabular-nums text-neutral-500">
+                    {linie.pret === null ? (
+                      <span className="text-xs text-amber-700">fără preț</span>
+                    ) : (
+                      linie.pret.toLocaleString('ro-RO', { maximumFractionDigits: 2 })
+                    )}
+                  </td>
+
+                  <td className="px-2 py-1 text-right font-medium tabular-nums">
+                    {(() => {
+                      const cant = cantitatePeDimensiune(linie, dimensiunePreview)
+                      if (linie.pret === null || cant === null) return '—'
+                      const pierderi = Number(linie.procentPierderi === '' ? 0 : linie.procentPierderi)
+                      return (cant * (1 + pierderi / 100) * linie.pret).toLocaleString('ro-RO', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    })()}
+                  </td>
+
                   {dimensiuni.map((d, index) => {
                     const valoare = linie.valori[d.id]
                     const esteOverride = valoare?.esteOverride === true
@@ -532,7 +578,7 @@ export function RetetaEditor({
                           disabled={blocat}
                           onChange={(e) => schimbaValoare(linie.cheie, d.id, e.target.value)}
                           onKeyDown={navigheaza}
-                          {...coordonate(rand, 7 + index)}
+                          {...coordonate(rand, 9 + index)}
                           title={
                             linie.modCalcul === 'tabel'
                               ? 'Cantitatea pe această dimensiune'
@@ -570,7 +616,7 @@ export function RetetaEditor({
 
             {linii.length === 0 && (
               <tr>
-                <td colSpan={9 + dimensiuni.length} className="px-4 py-6 text-neutral-500">
+                <td colSpan={11 + dimensiuni.length} className="px-4 py-6 text-neutral-500">
                   Rețeta nu are linii. Apasă „Adaugă linie".
                 </td>
               </tr>
@@ -578,6 +624,8 @@ export function RetetaEditor({
           </tbody>
         </table>
       </div>
+
+      <TotalReteta linii={linii} dimensiuni={dimensiuni} dimensiuneId={dimensiunePreview} />
 
       {overrideuri.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -729,5 +777,64 @@ function RandFormula({
         <span className="text-xs text-amber-700">{rezultat.mesaj}</span>
       )}
     </li>
+  )
+}
+
+
+/**
+ * What the recipe costs for one product, as far as the catalogue allows.
+ *
+ * Lines with a formula and lines with no price are counted separately rather
+ * than treated as zero — a total that quietly drops them reads as complete.
+ */
+function TotalReteta({
+  linii,
+  dimensiuni,
+  dimensiuneId,
+}: {
+  linii: Linie[]
+  dimensiuni: Dimensiune[]
+  dimensiuneId: string
+}) {
+  if (linii.length === 0) return null
+
+  let total = 0
+  let faraPret = 0
+  let cuFormula = 0
+
+  for (const linie of linii) {
+    if (linie.modCalcul === 'formula') {
+      cuFormula += 1
+      continue
+    }
+    const cant = cantitatePeDimensiune(linie, dimensiuneId)
+    if (cant === null) continue
+    if (linie.pret === null) {
+      faraPret += 1
+      continue
+    }
+    const pierderi = Number(linie.procentPierderi === '' ? 0 : linie.procentPierderi)
+    total += cant * (1 + pierderi / 100) * linie.pret
+  }
+
+  const dim = dimensiuni.find((d) => d.id === dimensiuneId)
+
+  return (
+    <div className="flex flex-wrap items-baseline gap-4 rounded-lg border border-neutral-200 bg-white px-4 py-3 text-sm">
+      <span className="text-neutral-500">
+        Cost material pe bucată{dim === undefined ? '' : `, dimensiunea ${dim.cod}`}
+      </span>
+      <span className="text-lg font-semibold tabular-nums text-neutral-900">
+        {total.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+        <span className="text-sm font-normal text-neutral-400">lei</span>
+      </span>
+      {(faraPret > 0 || cuFormula > 0) && (
+        <span className="text-xs text-amber-700">
+          minim — {faraPret > 0 && `${faraPret} linii fără preț`}
+          {faraPret > 0 && cuFormula > 0 && ', '}
+          {cuFormula > 0 && `${cuFormula} cu formulă, calculate în Rapoarte`}
+        </span>
+      )}
+    </div>
   )
 }

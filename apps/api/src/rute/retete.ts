@@ -94,6 +94,10 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
         obligatoriu: recipeLine.obligatoriu,
         observatii: recipeLine.observatii,
         denumireMaterial: sagaArticle.denumire,
+        // The catalogue's average price, so a line's cost is visible while the
+        // recipe is being written rather than only in a report afterwards.
+        pretReferinta: sagaArticle.pretReferinta,
+        umSaga: sagaArticle.um,
       })
       .from(recipeLine)
       .leftJoin(sagaArticle, eq(sagaArticle.codSaga, recipeLine.codSaga))
