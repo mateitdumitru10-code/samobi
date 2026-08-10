@@ -457,7 +457,9 @@ function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
   const queryClient = useQueryClient()
   const [selectate, setSelectate] = useState<string[]>([])
   const [confirmaReexport, setConfirmaReexport] = useState(false)
-  const [confirmaUmDiferita, setConfirmaUmDiferita] = useState(false)
+  const [umDiferite, setUmDiferite] = useState<
+    { codSaga: string; denumire: string; umBon: string; umSaga: string }[]
+  >([])
 
   const bonuri = useQuery({
     queryKey: ['bonuri'],
@@ -466,14 +468,19 @@ function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
 
   const exporta = useMutation({
     mutationFn: () =>
-      apel<{ id: string; nrLinii: number; nrBonuri: number }>('/export', {
+      apel<{
+        id: string
+        nrLinii: number
+        nrBonuri: number
+        umDiferite: { codSaga: string; denumire: string; umBon: string; umSaga: string }[]
+      }>('/export', {
         metoda: 'POST',
-        corp: { bonIds: selectate, confirmaReexport, confirmaUmDiferita },
+        corp: { bonIds: selectate, confirmaReexport },
       }),
     onSuccess: async (lot) => {
       setSelectate([])
       setConfirmaReexport(false)
-      setConfirmaUmDiferita(false)
+      setUmDiferite(lot.umDiferite)
       await queryClient.invalidateQueries({ queryKey: ['bonuri'] })
       const { url } = await apel<{ url: string }>(`/export/${lot.id}/descarcare`)
       window.location.assign(url)
@@ -506,10 +513,28 @@ function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
         )}
       </div>
 
+      {umDiferite.length > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+          <p className="font-medium text-amber-900">
+            Fișierul folosește unitățile din rețetar. {umDiferite.length}{' '}
+            {umDiferite.length === 1 ? 'articol are' : 'articole au'} altă unitate în SAGA — de
+            corectat acolo, altfel cantitatea se înregistrează în unitatea lui.
+          </p>
+          <ul className="mt-2 space-y-0.5 text-amber-900">
+            {umDiferite.map((u) => (
+              <li key={u.codSaga}>
+                <span className="font-mono text-xs">{u.codSaga}</span> {u.denumire} — rețetar{' '}
+                <strong>{u.umBon}</strong>, SAGA <strong>{u.umSaga}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {exporta.isError && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
           <p className="text-amber-900">{(exporta.error as EroareApi).message}</p>
-          {conflict && /deja exportate/i.test((exporta.error as EroareApi).message) && (
+          {conflict && (
             <label className="mt-2 flex items-center gap-2 text-amber-900">
               <input
                 type="checkbox"
@@ -519,16 +544,7 @@ function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
               Da, trimite-le din nou în SAGA.
             </label>
           )}
-          {conflict && /unitate de măsură/i.test((exporta.error as EroareApi).message) && (
-            <label className="mt-2 flex items-center gap-2 text-amber-900">
-              <input
-                type="checkbox"
-                checked={confirmaUmDiferita}
-                onChange={(e) => setConfirmaUmDiferita(e.target.checked)}
-              />
-              Am verificat: exportă chiar și cu unități diferite.
-            </label>
-          )}
+
         </div>
       )}
 

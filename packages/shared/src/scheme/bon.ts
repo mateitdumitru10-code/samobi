@@ -31,13 +31,5 @@ export const schemaExport = z.object({
   bonIds: z.array(z.string().uuid()).min(1, 'Alege cel puțin un bon.'),
   /** Required to export a bon that already went to SAGA once. */
   confirmaReexport: z.boolean().default(false),
-  /**
-   * Required when a line's unit differs from the article's unit in SAGA.
-   *
-   * The recipe sheets are the source of truth for units, so a difference means
-   * SAGA needs correcting — and until it is, the quantity would be booked in the
-   * wrong unit.
-   */
-  confirmaUmDiferita: z.boolean().default(false),
 })
 export type CerereExport = z.infer<typeof schemaExport>

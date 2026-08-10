@@ -212,7 +212,7 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
    * carries a short-lived signed link, never the bytes.
    */
   app.post('/export', poateExporta, async (cerere) => {
-    const { bonIds, confirmaReexport, confirmaUmDiferita } = schemaExport.parse(cerere.body)
+    const { bonIds, confirmaReexport } = schemaExport.parse(cerere.body)
     const utilizator = utilizatorul(cerere)
 
     const bonuri = await db
@@ -247,24 +247,26 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
 
     if (linii.length === 0) throw new CerereInvalida('Bonurile alese nu au linii de consum.')
 
-    // The last gate before accounting. A unit that differs by a factor of a
-    // thousand produces a booking that looks entirely plausible, so it is
-    // refused here rather than discovered in a stock count months later.
-    const umGresite = linii.filter((l) => {
-      const a = (normalizeazaUm(l.um) ?? '').toUpperCase()
-      const b = (normalizeazaUm(l.umSaga ?? '') ?? '').toUpperCase()
-      return a !== '' && b !== '' && a !== b
-    })
-
-    if (umGresite.length > 0 && !confirmaUmDiferita) {
-      const exemple = [...new Set(umGresite.map((l) => `${l.codSaga} ${l.denumire ?? ''} (bon ${l.um} / SAGA ${l.umSaga})`))]
-      throw new Conflict(
-        `${umGresite.length} linii au altă unitate de măsură decât articolul din SAGA. ` +
-          `Importate așa, cantitățile se înregistrează greșit — la capse și piulițe, de 1000 ` +
-          `respectiv 100 de ori. Corectează UM în SAGA (vezi docs/um-de-corectat-in-saga.xlsx) ` +
-          `sau confirmă explicit. Exemple: ${exemple.slice(0, 5).join('; ')}`,
-      )
-    }
+    /**
+     * The file carries the recipe's units, because the sheets are the source of
+     * truth. Where the catalogue disagrees, it is the catalogue that is wrong —
+     * but SAGA still has to be corrected, or it will book the quantity in its
+     * own unit. So the export goes through and says which articles to fix.
+     */
+    const umDiferite = [
+      ...new Map(
+        linii
+          .filter((l) => {
+            const a = (normalizeazaUm(l.um) ?? '').toUpperCase()
+            const b = (normalizeazaUm(l.umSaga ?? '') ?? '').toUpperCase()
+            return a !== '' && b !== '' && a !== b
+          })
+          .map((l) => [
+            l.codSaga,
+            { codSaga: l.codSaga, denumire: l.denumire ?? l.codSaga, umBon: l.um, umSaga: l.umSaga ?? '' },
+          ]),
+      ).values(),
+    ]
 
     // Aggregate across bons, then round once, at the end.
     const cumulat = new Map<string, { denumire: string; um: string; total: number }>()
@@ -336,6 +338,9 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
       nrLinii: randuri.length,
       hashContinut: hash,
       randuri,
+      // Not a refusal, but not silent either: these articles are booked in the
+      // recipe's unit and SAGA still holds them in another one.
+      umDiferite,
     }
   })
 

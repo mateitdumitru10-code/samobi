@@ -139,6 +139,8 @@ export interface ConsumCuDenumire {
   cantitateNeta: string
   cantitateBruta: string
   umReteta: string
+  /** What the catalogue says, for the warning only — never what is exported. */
+  umSaga: string | null
   cantitateBrutaRotunjita: string
   sursa: string
   contributii: RezultatCalcul['linii'][number]['contributii']
@@ -159,7 +161,7 @@ function avertismenteUm(linii: readonly ConsumCuDenumire[]): AvertismentUm[] {
   const out: AvertismentUm[] = []
   for (const linie of linii) {
     const a = (normalizeazaUm(linie.umReteta) ?? '').toUpperCase()
-    const b = (normalizeazaUm(linie.um) ?? '').toUpperCase()
+    const b = (normalizeazaUm(linie.umSaga ?? '') ?? '').toUpperCase()
     if (a === '' || b === '' || a === b) continue
 
     const fa = FACTOR[a]
@@ -168,7 +170,7 @@ function avertismenteUm(linii: readonly ConsumCuDenumire[]): AvertismentUm[] {
       codSaga: linie.codSaga,
       denumire: linie.denumire,
       umReteta: linie.umReteta,
-      umSaga: linie.um,
+      umSaga: linie.umSaga ?? '',
       factor: fa !== undefined && fb !== undefined ? fa / fb : null,
     })
   }
@@ -219,13 +221,16 @@ export async function calculeazaCuDenumiri(intrare: {
     return {
       codSaga: linie.codSaga,
       denumire: articol?.denumire ?? linie.codSaga,
-      // SAGA's own unit when it has one, because the import has to agree with
-      // the catalogue. Some articles have an empty unit there, and `??` does not
-      // catch an empty string — that wrote a blank UM column into the export and
-      // SAGA refused the line. The recipe sheet carries the right unit, so it
-      // stands in.
-      um: (articol?.um ?? '').trim() === '' ? linie.um : (articol?.um ?? linie.um),
+      /**
+       * The recipe's unit, always.
+       *
+       * The sheets are the source of truth for units — that is the tehnolog's
+       * ruling, and the catalogue is what gets corrected where the two differ.
+       * SAGA's own unit is still read, but only to point out the disagreement.
+       */
+      um: linie.um,
       umReteta: linie.um,
+      umSaga: (articol?.um ?? '').trim() === '' ? null : (articol?.um ?? null),
       gestiuneDescarcare: linie.gestiuneDescarcare ?? articol?.gestiuneImplicita ?? null,
       cantitateNeta: linie.cantitateNeta,
       cantitateBruta: linie.cantitateBruta,
