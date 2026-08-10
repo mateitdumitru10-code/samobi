@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { Activare } from './ecrane/Activare.js'
+import { Bonuri } from './ecrane/Bonuri.js'
 import { Conturi } from './ecrane/Conturi.js'
 import { Nomenclator } from './ecrane/Nomenclator.js'
 import { Login } from './ecrane/Login.js'
@@ -52,6 +53,7 @@ interface Sectiune {
 /** Only what the role can actually open; a hidden tab is not a permission. */
 function sectiuniPentru(rol: string): Sectiune[] {
   const sectiuni: Sectiune[] = [
+    { cheie: 'bonuri', eticheta: 'Bonuri' },
     { cheie: 'modele', eticheta: 'Modele și rețete' },
     { cheie: 'nomenclator', eticheta: 'Nomenclator' },
   ]
@@ -88,7 +90,7 @@ export function App() {
     indexDiez < 0 ? '' : (ruta.slice(indexDiez + 1).replace(/^\//, '').split('?')[0] ?? '')
   const sectiuneCurenta = sectiuni.some((s) => s.cheie === cerut)
     ? cerut
-    : (sectiuni[0]?.cheie ?? 'modele')
+    : (sectiuni[0]?.cheie ?? 'bonuri')
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -133,6 +135,7 @@ export function App() {
 
       <main className="mx-auto max-w-5xl px-6 py-8">
         {sectiuneCurenta === 'conturi' && eu.rol === 'admin' && <Conturi utilizator={eu} />}
+        {sectiuneCurenta === 'bonuri' && <Bonuri utilizator={eu} />}
         {sectiuneCurenta === 'modele' && <Modele utilizator={eu} />}
         {sectiuneCurenta === 'nomenclator' && <Nomenclator utilizator={eu} />}
       </main>

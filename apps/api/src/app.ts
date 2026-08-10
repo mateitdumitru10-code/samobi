@@ -7,6 +7,7 @@ import { verificatorSupabase, type VerificatorToken } from './auth.js'
 import { allowedOrigins, env } from './env.js'
 import { inregistreazaTratareErori } from './erori.js'
 import { ruteAuth } from './rute/auth.js'
+import { ruteBonuri } from './rute/bonuri.js'
 import { ruteConturi } from './rute/conturi.js'
 import { ruteModele } from './rute/modele.js'
 import { ruteNomenclator } from './rute/nomenclator.js'
@@ -41,6 +42,7 @@ export async function buildApp(optiuni: OptiuniApp = {}): Promise<FastifyInstanc
   ruteNomenclator(app, verifica)
   ruteModele(app, verifica)
   ruteRetete(app, verifica)
+  ruteBonuri(app, verifica)
 
   return app
 }

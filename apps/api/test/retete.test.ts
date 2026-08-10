@@ -50,11 +50,17 @@ describe.skipIf(!areBazaDeDate)('modele, dimensiuni și rețetar', () => {
 
   afterAll(async () => {
     if (modeleCreate.length > 0) {
+      // Two conditions, not one. The ids are what the run created; the code
+      // prefix is the seatbelt. These tests run against the production project,
+      // so a mistake here would delete somebody's real work.
+      const ale_noastre = clientSql`
+        id = any(${clientSql.array(modeleCreate)}::uuid[]) and cod like 'TEST-%'`
+
       await clientSql`delete from recipe_line where recipe_id in (
-        select id from recipe where model_id = any(${clientSql.array(modeleCreate)}::uuid[]))`
-      await clientSql`delete from recipe where model_id = any(${clientSql.array(modeleCreate)}::uuid[])`
-      await clientSql`delete from dimension where model_id = any(${clientSql.array(modeleCreate)}::uuid[])`
-      await clientSql`delete from model where id = any(${clientSql.array(modeleCreate)}::uuid[])`
+        select id from recipe where model_id in (select id from model where ${ale_noastre}))`
+      await clientSql`delete from recipe where model_id in (select id from model where ${ale_noastre})`
+      await clientSql`delete from dimension where model_id in (select id from model where ${ale_noastre})`
+      await clientSql`delete from model where ${ale_noastre}`
     }
     for (const cont of Object.values(conturi)) {
       await supabaseAdmin.auth.admin.deleteUser(cont.id)
