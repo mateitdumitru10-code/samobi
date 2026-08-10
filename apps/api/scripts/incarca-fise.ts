@@ -15,7 +15,8 @@ import { resolve } from 'node:path'
 
 import { clientSql, db } from '../src/db.js'
 
-import { FISE, type Fisa, type LinieFisa } from './fise.js'
+import { type Fisa, type LinieFisa } from './fise.js'
+import { toateFisele } from './fise-json.js'
 
 /**
  * Loads the transcribed recipe sheets so there is something real to try the
@@ -265,7 +266,10 @@ async function incarca(fisa: Fisa) {
   console.log(`  Scris: ${fisa.cod}, ${potrivite.length} linii.`)
 }
 
-for (const fisa of FISE) {
+const fise = toateFisele()
+console.log(`${fise.length} fișe de încărcat.\n`)
+
+for (const fisa of fise) {
   await incarca(fisa)
 }
 

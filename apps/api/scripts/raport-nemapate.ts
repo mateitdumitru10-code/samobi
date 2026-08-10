@@ -9,7 +9,9 @@ import ExcelJS from 'exceljs'
 import { clientSql, db } from '../src/db.js'
 import { citesteXlsx } from '../src/nomenclator/xlsx.js'
 
-import { FISE } from './fise.js'
+import { toateFisele } from './fise-json.js'
+
+const FISE = toateFisele()
 
 /**
  * What SAGA already knows, from the production export: for a finished product,
