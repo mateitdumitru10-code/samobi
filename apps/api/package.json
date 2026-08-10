@@ -21,7 +21,9 @@
     "preturi-din-productie": "tsx --env-file=.env scripts/preturi-din-productie.ts",
     "raport-um-reteta": "tsx --env-file=.env scripts/raport-um-reteta.ts",
     "raport-remapare": "tsx --env-file=.env scripts/raport-remapare.ts",
-    "remapare-evidente": "tsx --env-file=.env scripts/remapare-evidente.ts"
+    "remapare-evidente": "tsx --env-file=.env scripts/remapare-evidente.ts",
+    "propune-formule": "tsx --env-file=.env scripts/propune-formule.ts",
+    "aplica-formule": "tsx --env-file=.env scripts/aplica-formule.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
