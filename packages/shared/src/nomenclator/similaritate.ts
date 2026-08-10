@@ -11,12 +11,21 @@ function faraDiacritice(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
-/** Uppercase, unaccented, punctuation collapsed to single spaces. */
+/**
+ * Uppercase, unaccented, punctuation collapsed to single spaces.
+ *
+ * Dimension separators are levelled first: the sheets write `1900x680x40`, the
+ * catalogue writes `1900*680*40`, and without this they share almost no
+ * trigrams even though they name the same block of foam.
+ */
 export function normalizeazaDenumire(text: string): string {
-  return faraDiacritice(text)
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, ' ')
-    .trim()
+  let curatat = faraDiacritice(text).toUpperCase()
+  // Twice, because the separators overlap: 1900X680X40 consumes the first match
+  // and would otherwise leave the second X in place.
+  for (let i = 0; i < 2; i += 1) {
+    curatat = curatat.replace(/(\d)\s*[X×*]\s*(\d)/g, '$1 $2')
+  }
+  return curatat.replace(/[^A-Z0-9]+/g, ' ').trim()
 }
 
 function trigrame(text: string): Set<string> {
@@ -41,6 +50,37 @@ export function scorSimilaritate(a: string, b: string): number {
   for (const g of setA) if (setB.has(g)) comune += 1
 
   return (2 * comune) / (setA.size + setB.size)
+}
+
+/** Every number in a name, in order. '2538 1900*680*40' → [2538, 1900, 680, 40]. */
+export function numereDin(text: string): string[] {
+  return (normalizeazaDenumire(text).match(/\d+(?:\s\d+)*/g) ?? [])
+    .flatMap((grup) => grup.split(' '))
+    .filter((n) => n !== '')
+}
+
+/**
+ * Whether a match can be accepted without a person looking at it.
+ *
+ * In this catalogue the numbers carry the meaning: dimensions, gauges, sizes.
+ * `CAPSE 38/12` and `CAPSE 80/12` are different staples and score alike on
+ * letters alone, while `POL.2538 1900x680x40` and `POLIURETAN 2538 1900*680*40`
+ * are the same block of foam written two ways. So a middling score is trusted
+ * only when every number agrees, and a name with no numbers at all — VATELINA
+ * against VASELINA — is never trusted on letters alone.
+ */
+export function potrivireSigura(externa: string, candidat: string, scor: number): boolean {
+  if (scor >= 0.9) return true
+
+  const numereExterne = numereDin(externa)
+  const numereCandidat = numereDin(candidat)
+  if (numereExterne.length === 0) return false
+
+  const aceleasi =
+    numereExterne.length === numereCandidat.length &&
+    numereExterne.every((n, i) => n === numereCandidat[i])
+
+  return aceleasi && scor >= 0.7
 }
 
 export interface Candidat {

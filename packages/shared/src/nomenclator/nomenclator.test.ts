@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { normalizeazaCodSaga } from './coduri.js'
-import { scorSimilaritate, sugereaza } from './similaritate.js'
+import {
+  normalizeazaDenumire,
+  numereDin,
+  potrivireSigura,
+  scorSimilaritate,
+  sugereaza,
+} from './similaritate.js'
 import { determinaTip, tipDupaCont, tipDupaDenumire } from './tip.js'
 import { esteUmCunoscuta, normalizeazaUm } from './um.js'
 
@@ -134,5 +140,56 @@ describe('sugestii pentru materiale nemapate', () => {
 
   it('respectă limita cerută', () => {
     expect(sugereaza('CHERESTEA TIVITA', catalog, { limita: 1 })).toHaveLength(1)
+  })
+})
+
+describe('separatori de dimensiuni', () => {
+  it('tratează x, × și * la fel între cifre', () => {
+    expect(normalizeazaDenumire('POL.2538 1900x680x40')).toBe('POL 2538 1900 680 40')
+    expect(normalizeazaDenumire('POLIURETAN 2538 1900*680*40')).toBe('POLIURETAN 2538 1900 680 40')
+    expect(normalizeazaDenumire('PLASA BONELL 186×60×13')).toBe('PLASA BONELL 186 60 13')
+  })
+
+  it('apropie fișa scanată de denumirea din nomenclator', () => {
+    const scor = scorSimilaritate('POL.2538 1900x680x40', 'POLIURETAN 2538 1900*680*40')
+    expect(scor).toBeGreaterThan(0.7)
+  })
+
+  it('nu strică un X care face parte dintr-un cuvânt', () => {
+    expect(normalizeazaDenumire('BOX SPRING')).toBe('BOX SPRING')
+  })
+})
+
+describe('când o potrivire se poate accepta fără om', () => {
+  const sigura = (a: string, b: string) => potrivireSigura(a, b, scorSimilaritate(a, b))
+
+  it('acceptă când toate cifrele coincid', () => {
+    expect(sigura('POL.2538 1900x680x40', 'POLIURETAN 2538 1900*680*40')).toBe(true)
+    expect(sigura('FELTRU 1000 GR', 'FELTRU 1000GR')).toBe(true)
+    expect(sigura('PLASA BONELL 186x66x13', 'PLASA BONNELL 186X66X13CM')).toBe(true)
+    expect(sigura('VATELINA 100 GR', 'VATELINA 100GR')).toBe(true)
+  })
+
+  it('refuză când cifrele diferă, oricât de asemănătoare ar fi literele', () => {
+    expect(sigura('CAPSE 38/12', 'CAPSE 80/12')).toBe(false)
+    expect(sigura('HSURUB 5/20', 'HOLSURUB 2.5X20')).toBe(false)
+    expect(sigura('HDF MELAM 2.5 MM ALB', 'MDF MELAM 2 FETE 10MM ALB')).toBe(false)
+  })
+
+  it('refuză o denumire fără cifre, oricât de apropiată', () => {
+    // Vaselină în loc de vatelină: exact greșeala pe care nicio euristică nu o prinde.
+    expect(sigura('VATELINA', 'VASELINA')).toBe(false)
+    expect(sigura('CHER FAG', 'CHERESTEA FAG')).toBe(false)
+    expect(sigura('AMESTEC FIBRA', 'AMESTEC FULGI + FIBRA')).toBe(false)
+  })
+
+  it('acceptă potrivirea identică', () => {
+    expect(sigura('CAPSE 92/35', 'CAPSE 92/35')).toBe(true)
+    expect(sigura('ADEZIV', 'ADEZIV')).toBe(true)
+  })
+
+  it('extrage cifrele în ordine', () => {
+    expect(numereDin('POL.2538 1900x680x40')).toEqual(['2538', '1900', '680', '40'])
+    expect(numereDin('ADEZIV')).toEqual([])
   })
 })

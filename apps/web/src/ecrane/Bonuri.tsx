@@ -353,8 +353,11 @@ function CautaArticol({
   const rezultate = useQuery({
     queryKey: ['cauta-articol', amanat, categorie],
     queryFn: () => {
+      // Deliberately not filtered by category: `grupa` is empty in every row of
+      // the SAGA export, so every article has a null category and the filter
+      // would return nothing at all. The category stays a hint in the
+      // placeholder until somebody fills those in.
       const parametri = new URLSearchParams({ cauta: amanat, tip: 'materie_prima', pePagina: '10' })
-      if (categorie !== null) parametri.set('categorie', categorie)
       return apel<{ articole: Articol[] }>(`/nomenclator?${parametri.toString()}`)
     },
     enabled: amanat.trim().length >= 2 && valoare === '',
