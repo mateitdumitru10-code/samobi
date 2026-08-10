@@ -19,7 +19,8 @@
     "aplica-mapari": "tsx --env-file=.env scripts/aplica-mapari.ts",
     "leaga-produse": "tsx --env-file=.env scripts/leaga-produse.ts",
     "preturi-din-productie": "tsx --env-file=.env scripts/preturi-din-productie.ts",
-    "raport-um-reteta": "tsx --env-file=.env scripts/raport-um-reteta.ts"
+    "raport-um-reteta": "tsx --env-file=.env scripts/raport-um-reteta.ts",
+    "raport-remapare": "tsx --env-file=.env scripts/raport-remapare.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

@@ -19,7 +19,10 @@ import { citesteXlsx } from '../src/nomenclator/xlsx.js'
  *   pnpm --filter @samobi/api incarca-fise -- --scrie --reincarca
  */
 
-const caleXlsx = resolve(import.meta.dirname, '..', '..', '..', 'docs', 'materiale-de-mapat.xlsx')
+// Any worksheet with the same four columns: the unmapped queue by default, or
+// the re-mapping proposals. Both end in the same file of decisions.
+const numeFisier = process.argv[2] ?? 'materiale-de-mapat.xlsx'
+const caleXlsx = resolve(import.meta.dirname, '..', '..', '..', 'docs', numeFisier)
 const caleJson = resolve(import.meta.dirname, 'mapari.json')
 
 const foaie = citesteXlsx(readFileSync(caleXlsx))
@@ -109,7 +112,7 @@ for (const a of alegeri) {
 
 writeFileSync(caleJson, `${JSON.stringify(mapari, null, 2)}\n`)
 
-console.log(`${alegeri.length} alegeri citite: ${noi} noi, ${schimbate} modificate.`)
+console.log(`${numeFisier}: ${alegeri.length} alegeri citite — ${noi} noi, ${schimbate} modificate.`)
 console.log(`Total în scripts/mapari.json: ${Object.keys(mapari).length}.`)
 console.log('\nAcum rulează: pnpm --filter @samobi/api incarca-fise -- --scrie --reincarca')
 
