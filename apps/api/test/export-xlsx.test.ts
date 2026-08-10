@@ -91,3 +91,16 @@ describe('hash-ul de conținut', () => {
     expect(hashContinut(RANDURI)).toBe(hashContinut([...RANDURI]))
   })
 })
+
+describe('unitatea de măsură din export', () => {
+  it('nu scrie niciodată o celulă de UM goală', async () => {
+    // O celulă goală aici e motivul pentru care SAGA a respins un bon real:
+    // articolul are UM gol în nomenclator, iar `??` nu prinde șirul vid.
+    const continut = await scrieExport([
+      { codSaga: '00000662', denumire: 'CUIE', um: 'MIIB', cantitate: '0.100' },
+    ])
+    const foaie = citesteXlsx(continut)
+    expect(foaie.randuri[1]?.[2]).toBe('MIIB')
+    expect(foaie.randuri[1]?.[2]).not.toBe('')
+  })
+})

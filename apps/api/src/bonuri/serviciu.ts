@@ -168,24 +168,17 @@ export async function calculeazaCuDenumiri(intrare: {
     )
   }
 
-  // SAGA refuses an import line whose article has no unit, and says only that
-  // the article is bad. Catching it here names the article and the reason.
-  const faraUm = [...dupaCod.values()].filter((a) => a.um.trim() === '')
-  if (faraUm.length > 0) {
-    throw new CerereInvalida(
-      `Articole fără unitate de măsură în SAGA: ${faraUm
-        .map((a) => `${a.codSaga} ${a.denumire}`)
-        .join('; ')}. SAGA ar respinge liniile. Completează UM în SAGA sau folosește alt cod.`,
-    )
-  }
-
   const linii: ConsumCuDenumire[] = rezultat.linii.map((linie) => {
     const articol = dupaCod.get(linie.codSaga)
     return {
       codSaga: linie.codSaga,
-      // The unit that goes to SAGA is SAGA's own, not the recipe's shorthand.
       denumire: articol?.denumire ?? linie.codSaga,
-      um: articol?.um ?? linie.um,
+      // SAGA's own unit when it has one, because the import has to agree with
+      // the catalogue. Some articles have an empty unit there, and `??` does not
+      // catch an empty string — that wrote a blank UM column into the export and
+      // SAGA refused the line. The recipe sheet carries the right unit, so it
+      // stands in.
+      um: (articol?.um ?? '').trim() === '' ? linie.um : (articol?.um ?? linie.um),
       gestiuneDescarcare: linie.gestiuneDescarcare ?? articol?.gestiuneImplicita ?? null,
       cantitateNeta: linie.cantitateNeta,
       cantitateBruta: linie.cantitateBruta,

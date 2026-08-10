@@ -360,9 +360,6 @@ function CautaArticol({
       const parametri = new URLSearchParams({
         cauta: amanat,
         tip: 'materie_prima',
-        // Articles without a unit exist in the catalogue and SAGA refuses them
-        // on import, so they are not offered here at all.
-        doarUtilizabile: 'true',
         pePagina: '10',
       })
       return apel<{ articole: Articol[] }>(`/nomenclator?${parametri.toString()}`)
@@ -406,7 +403,14 @@ function CautaArticol({
                 className="w-full px-3 py-2 text-left text-sm hover:bg-neutral-50"
               >
                 <span className="font-mono text-xs text-neutral-500">{a.codSaga}</span>{' '}
-                {a.denumire} <span className="text-xs text-neutral-400">({a.um})</span>
+                {a.denumire}{' '}
+                {a.um.trim() === '' ? (
+                  // Shown rather than hidden: the unit comes from the recipe, and
+                  // hiding these would remove real fabrics from the picker.
+                  <span className="text-xs text-amber-700">(fără UM în SAGA)</span>
+                ) : (
+                  <span className="text-xs text-neutral-400">({a.um})</span>
+                )}
               </button>
             </li>
           ))}

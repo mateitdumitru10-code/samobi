@@ -161,11 +161,7 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
     const coduri = linii.map((l) => l.codSaga).filter((c): c is string => c !== null)
     if (coduri.length > 0) {
       const gasite = await db
-        .select({
-          codSaga: sagaArticle.codSaga,
-          denumire: sagaArticle.denumire,
-          um: sagaArticle.um,
-        })
+        .select({ codSaga: sagaArticle.codSaga })
         .from(sagaArticle)
         .where(inArray(sagaArticle.codSaga, coduri))
       const cunoscute = new Set(gasite.map((g) => g.codSaga))
@@ -176,16 +172,10 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
         )
       }
 
-      // Refused here rather than at export time: a recipe line pointing at an
-      // article with no unit is a bon SAGA will reject, discovered weeks later.
-      const faraUm = gasite.filter((g) => g.um.trim() === '')
-      if (faraUm.length > 0) {
-        throw new CerereInvalida(
-          `Articole fără unitate de măsură în SAGA: ${faraUm
-            .map((a) => `${a.codSaga} ${a.denumire}`)
-            .join('; ')}. Alege alt cod sau completează UM în SAGA.`,
-        )
-      }
+      // An article whose unit is blank in SAGA is not an error here: the recipe
+      // line carries the unit, and the export falls back to it. Blocking the
+      // save would forbid perfectly good materials — four fabrics in the live
+      // catalogue are in exactly that state.
     }
 
     const rezultat = await db.transaction(async (tx) => {
