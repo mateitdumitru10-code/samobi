@@ -147,6 +147,7 @@ export async function importaNomenclator(
           gestiuneImplicita: a.gestiuneImplicita,
           categorie: a.categorie,
           pretReferinta: a.pretReferinta,
+          stoc: a.stoc,
           activ: true,
           sincronizatLa: acum,
         })),
@@ -176,6 +177,7 @@ export async function importaNomenclator(
           ...(coloane.has('pret')
             ? { pretReferinta: sql`coalesce(excluded.pret_referinta, ${sagaArticle.pretReferinta})` }
             : {}),
+          ...(coloane.has('stoc') ? { stoc: sql`excluded.stoc` } : {}),
           activ: sql`true`,
           sincronizatLa: acum,
         },

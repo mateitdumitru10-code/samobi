@@ -11,6 +11,7 @@ import { ruteBonuri } from './rute/bonuri.js'
 import { ruteConturi } from './rute/conturi.js'
 import { ruteModele } from './rute/modele.js'
 import { ruteNomenclator } from './rute/nomenclator.js'
+import { ruteRapoarte } from './rute/rapoarte.js'
 import { ruteRetete } from './rute/retete.js'
 import { ruteVersiuni } from './rute/versiuni.js'
 
@@ -44,6 +45,7 @@ export async function buildApp(optiuni: OptiuniApp = {}): Promise<FastifyInstanc
   ruteModele(app, verifica)
   ruteRetete(app, verifica)
   ruteVersiuni(app, verifica)
+  ruteRapoarte(app, verifica)
   ruteBonuri(app, verifica)
 
   return app

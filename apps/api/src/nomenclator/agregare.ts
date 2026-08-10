@@ -11,6 +11,7 @@ export interface ArticolAgregat {
   gestiuneImplicita: string | null
   categorie: string | null
   pretReferinta: string | null
+  stoc: string | null
 }
 
 /** Where raw materials are booked, and therefore the sensible default. */
@@ -63,6 +64,12 @@ export function agregaArticole(randuri: readonly RandNomenclator[]): ArticolAgre
       }
     }
 
+    // Stock is summed across warehouses; the stock report has one row each.
+    let stoc: string | null = null
+    for (const rand of grup) {
+      if (rand.stoc !== 0) stoc = String((stoc === null ? 0 : Number(stoc)) + rand.stoc)
+    }
+
     articole.push({
       codSaga: cod,
       denumire: principal.denumire,
@@ -74,6 +81,7 @@ export function agregaArticole(randuri: readonly RandNomenclator[]): ArticolAgre
       gestiuneImplicita: principal.gestiune,
       categorie: principal.categorie,
       pretReferinta: pret,
+      stoc,
     })
   }
 

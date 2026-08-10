@@ -4,6 +4,7 @@ import { Activare } from './ecrane/Activare.js'
 import { Bonuri } from './ecrane/Bonuri.js'
 import { Conturi } from './ecrane/Conturi.js'
 import { Nomenclator } from './ecrane/Nomenclator.js'
+import { Rapoarte } from './ecrane/Rapoarte.js'
 import { Login } from './ecrane/Login.js'
 import { Modele } from './ecrane/Modele.js'
 import { deconecteaza, useSesiuneSupabase, useUtilizator } from './lib/sesiune.js'
@@ -56,6 +57,7 @@ function sectiuniPentru(rol: string): Sectiune[] {
     { cheie: 'bonuri', eticheta: 'Bonuri' },
     { cheie: 'modele', eticheta: 'Modele și rețete' },
     { cheie: 'nomenclator', eticheta: 'Nomenclator' },
+    { cheie: 'rapoarte', eticheta: 'Rapoarte' },
   ]
   if (rol === 'admin') sectiuni.push({ cheie: 'conturi', eticheta: 'Conturi' })
   return sectiuni
@@ -138,6 +140,7 @@ export function App() {
         {sectiuneCurenta === 'bonuri' && <Bonuri utilizator={eu} />}
         {sectiuneCurenta === 'modele' && <Modele utilizator={eu} />}
         {sectiuneCurenta === 'nomenclator' && <Nomenclator utilizator={eu} />}
+        {sectiuneCurenta === 'rapoarte' && <Rapoarte utilizator={eu} />}
       </main>
     </div>
   )

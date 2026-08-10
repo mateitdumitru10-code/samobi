@@ -1,0 +1,1 @@
+ALTER TABLE "saga_article" ADD COLUMN "stoc" numeric(18, 6);

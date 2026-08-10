@@ -109,6 +109,14 @@ export const sagaArticle = pgTable(
     gestiuneImplicita: text('gestiune_implicita'),
     categorie: text('categorie'),
     pretReferinta: cantitate('pret_referinta'),
+    /**
+     * Stock on hand at the last import that carried it.
+     *
+     * A snapshot, not a running balance — the application never writes here, and
+     * a procurement report says which import it is looking at rather than
+     * pretending the figure is live.
+     */
+    stoc: cantitate('stoc'),
     activ: boolean('activ').notNull().default(true),
     sincronizatLa: timestamp('sincronizat_la', { withTimezone: true }),
   },
