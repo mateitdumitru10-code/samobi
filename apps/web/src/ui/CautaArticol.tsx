@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 
 import { apel } from '../lib/api.js'
 
@@ -40,6 +40,7 @@ export function CautaArticol({
   placeholder = 'caută după denumire sau cod…',
   autoFocus = false,
   clasa = 'camp camp-mic w-72',
+  onTastaLibera,
   ...rest
 }: {
   onAlege: (articol: ArticolGasit) => void
@@ -48,6 +49,12 @@ export function CautaArticol({
   placeholder?: string
   autoFocus?: boolean
   clasa?: string
+  /**
+   * Keys the picker did not use. Inside the recipe grid the arrows have to
+   * carry on moving between cells whenever the suggestion list is not open,
+   * or the material column becomes a dead end for the keyboard.
+   */
+  onTastaLibera?: ((eveniment: KeyboardEvent<HTMLInputElement>) => void) | undefined
 } & Record<`data-${string}`, unknown>) {
   const [text, setText] = useState('')
   const [amanat, setAmanat] = useState('')
@@ -105,20 +112,28 @@ export function CautaArticol({
           if (!containerRef.current?.contains(e.relatedTarget)) setTimeout(() => setDeschis(false), 120)
         }}
         onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') {
+          const listaDeschisa = deschis && cauta && articole.length > 0
+          if (listaDeschisa && e.key === 'ArrowDown') {
             e.preventDefault()
-            setDeschis(true)
             setActiv((i) => Math.min(i + 1, articole.length - 1))
-          } else if (e.key === 'ArrowUp') {
+            return
+          }
+          if (listaDeschisa && e.key === 'ArrowUp') {
             e.preventDefault()
             setActiv((i) => Math.max(i - 1, 0))
-          } else if (e.key === 'Enter' && deschis && articole.length > 0) {
+            return
+          }
+          if (listaDeschisa && e.key === 'Enter') {
             e.preventDefault()
             alege(articole[activ])
-          } else if (e.key === 'Escape') {
+            return
+          }
+          if (e.key === 'Escape') {
             setText('')
             setDeschis(false)
+            return
           }
+          onTastaLibera?.(e)
         }}
         role="combobox"
         aria-expanded={deschis && cauta}

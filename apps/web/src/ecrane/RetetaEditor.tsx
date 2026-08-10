@@ -770,6 +770,7 @@ export function RetetaEditor({
                           }`}
                           placeholder={linie.codSaga === '' ? 'caută material…' : linie.codSaga}
                           onAlege={(a) => alegeArticol(linie.cheie, a)}
+                          onTastaLibera={navigheaza}
                           {...coordonate(rand, 1)}
                           {...ancora}
                         />
