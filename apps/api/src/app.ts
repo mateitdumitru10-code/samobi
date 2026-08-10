@@ -1,4 +1,5 @@
 import cors from '@fastify/cors'
+import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
 import type { FastifyInstance } from 'fastify'
 
@@ -7,6 +8,7 @@ import { allowedOrigins, env } from './env.js'
 import { inregistreazaTratareErori } from './erori.js'
 import { ruteAuth } from './rute/auth.js'
 import { ruteConturi } from './rute/conturi.js'
+import { ruteNomenclator } from './rute/nomenclator.js'
 
 export interface OptiuniApp {
   /** Overridden in tests so guards can be exercised without real Supabase tokens. */
@@ -23,6 +25,8 @@ export async function buildApp(optiuni: OptiuniApp = {}): Promise<FastifyInstanc
   })
 
   await app.register(cors, { origin: allowedOrigins, credentials: true })
+  // The nomenclature import is a file upload; nothing else in the API takes one.
+  await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 1 } })
   inregistreazaTratareErori(app)
 
   const verifica = optiuni.verificaToken ?? verificatorSupabase
@@ -32,6 +36,7 @@ export async function buildApp(optiuni: OptiuniApp = {}): Promise<FastifyInstanc
 
   ruteAuth(app, verifica)
   ruteConturi(app, verifica)
+  ruteNomenclator(app, verifica)
 
   return app
 }

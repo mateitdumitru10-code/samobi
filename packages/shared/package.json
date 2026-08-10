@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./db": "./src/db/schema.ts",
     "./calcul": "./src/calcul/index.ts",
-    "./scheme": "./src/scheme/index.ts"
+    "./scheme": "./src/scheme/index.ts",
+    "./nomenclator": "./src/nomenclator/index.ts"
   },
   "scripts": {
     "build": "tsc --build",

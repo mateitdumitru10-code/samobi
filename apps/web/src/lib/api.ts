@@ -59,3 +59,40 @@ export async function apel<T>(cale: string, optiuni: Optiuni = {}): Promise<T> {
 
   return continut as T
 }
+
+/**
+ * File upload. Separate from `apel` because the body must stay a FormData —
+ * setting content-type by hand would strip the multipart boundary and the server
+ * would see an empty request.
+ */
+export async function incarcaFisier<T>(
+  cale: string,
+  fisier: File,
+  campuri: Record<string, string> = {},
+): Promise<T> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (token === undefined) {
+    throw new EroareApi(401, 'NEAUTENTIFICAT', 'Sesiunea a expirat. Autentifică-te din nou.')
+  }
+
+  const corp = new FormData()
+  for (const [cheie, valoare] of Object.entries(campuri)) corp.append(cheie, valoare)
+  corp.append('fisier', fisier)
+
+  const raspuns = await fetch(`${env.VITE_API_URL}${cale}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}` },
+    body: corp,
+  })
+
+  const text = await raspuns.text()
+  const continut: unknown = text === '' ? null : JSON.parse(text)
+
+  if (!raspuns.ok) {
+    const eroare = continut as { cod?: string; mesaj?: string }
+    throw new EroareApi(raspuns.status, eroare?.cod ?? 'EROARE', eroare?.mesaj ?? 'Import eșuat.')
+  }
+
+  return continut as T
+}

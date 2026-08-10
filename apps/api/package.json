@@ -11,10 +11,12 @@
     "test": "vitest run",
     "seed": "tsx --env-file=.env scripts/seed.ts",
     "bootstrap-admin": "tsx --env-file=.env scripts/bootstrap-admin.ts",
-    "link-activare": "tsx --env-file=.env scripts/link-activare.ts"
+    "link-activare": "tsx --env-file=.env scripts/link-activare.ts",
+    "import-nomenclator": "tsx --env-file=.env scripts/import-nomenclator.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
+    "@fastify/multipart": "^10.1.0",
     "@samobi/shared": "workspace:*",
     "@supabase/supabase-js": "^2.58.0",
     "drizzle-orm": "^0.44.7",

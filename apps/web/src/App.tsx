@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Activare } from './ecrane/Activare.js'
 import { Conturi } from './ecrane/Conturi.js'
+import { Nomenclator } from './ecrane/Nomenclator.js'
 import { Login } from './ecrane/Login.js'
 import { deconecteaza, useSesiuneSupabase, useUtilizator } from './lib/sesiune.js'
 
@@ -42,6 +43,18 @@ function esteActivare(ruta: string): boolean {
   )
 }
 
+interface Sectiune {
+  cheie: string
+  eticheta: string
+}
+
+/** Only what the role can actually open; a hidden tab is not a permission. */
+function sectiuniPentru(rol: string): Sectiune[] {
+  const sectiuni: Sectiune[] = [{ cheie: 'nomenclator', eticheta: 'Nomenclator' }]
+  if (rol === 'admin') sectiuni.push({ cheie: 'conturi', eticheta: 'Conturi' })
+  return sectiuni
+}
+
 export function App() {
   const ruta = useRuta()
   const { gata, areSesiune } = useSesiuneSupabase()
@@ -64,6 +77,14 @@ export function App() {
   }
 
   const eu = utilizator.data
+  const sectiuni = sectiuniPentru(eu.rol)
+  // `ruta` is pathname + hash; the section is whatever follows the '#/'.
+  const indexDiez = ruta.indexOf('#')
+  const cerut =
+    indexDiez < 0 ? '' : (ruta.slice(indexDiez + 1).replace(/^\//, '').split('?')[0] ?? '')
+  const sectiuneCurenta = sectiuni.some((s) => s.cheie === cerut)
+    ? cerut
+    : (sectiuni[0]?.cheie ?? 'nomenclator')
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -88,14 +109,27 @@ export function App() {
         </div>
       </header>
 
+      <nav className="border-b border-neutral-200 bg-white">
+        <div className="mx-auto flex max-w-5xl gap-1 px-6">
+          {sectiuniPentru(eu.rol).map((sectiune) => (
+            <a
+              key={sectiune.cheie}
+              href={`#/${sectiune.cheie}`}
+              className={
+                sectiuneCurenta === sectiune.cheie
+                  ? 'border-b-2 border-neutral-900 px-3 py-2 text-sm font-medium text-neutral-900'
+                  : 'border-b-2 border-transparent px-3 py-2 text-sm text-neutral-500 hover:text-neutral-900'
+              }
+            >
+              {sectiune.eticheta}
+            </a>
+          ))}
+        </div>
+      </nav>
+
       <main className="mx-auto max-w-5xl px-6 py-8">
-        {eu.rol === 'admin' ? (
-          <Conturi utilizator={eu} />
-        ) : (
-          <p className="text-sm text-neutral-600">
-            Modulele de rețete și bonuri urmează. Deocamdată doar administratorul are un ecran.
-          </p>
-        )}
+        {sectiuneCurenta === 'conturi' && eu.rol === 'admin' && <Conturi utilizator={eu} />}
+        {sectiuneCurenta === 'nomenclator' && <Nomenclator utilizator={eu} />}
       </main>
     </div>
   )
