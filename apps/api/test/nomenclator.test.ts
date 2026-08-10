@@ -48,14 +48,14 @@ async function fisier(randuri: Rand[], optiuni: { titlu?: boolean } = {}): Promi
 
 describe('citirea exportului SAGA', () => {
   it('reconstituie codul când Excel l-a livrat ca număr', async () => {
-    const randuri = citesteNomenclator(
+    const { randuri } = citesteNomenclator(
       await fisier([{ cod_art: 16024, denumire: 'CHERESTEA TIVITA FAG', um: 'MC', cont: '301' }]),
     )
     expect(randuri[0]?.cod).toBe('00016024')
   })
 
   it('găsește antetul chiar dacă exportul are un titlu deasupra', async () => {
-    const randuri = citesteNomenclator(
+    const { randuri } = citesteNomenclator(
       await fisier([{ cod_art: '00023684', denumire: 'TOSCANA 247', um: 'ML' }], { titlu: true }),
     )
     expect(randuri).toHaveLength(1)
@@ -63,7 +63,7 @@ describe('citirea exportului SAGA', () => {
   })
 
   it('normalizează UM-ul fără să piardă scrierea originală', async () => {
-    const randuri = citesteNomenclator(
+    const { randuri } = citesteNomenclator(
       await fisier([{ cod_art: '00000018', denumire: 'CANT PAL', um: '  BUC' }]),
     )
     expect(randuri[0]?.um).toBe('BUC')
@@ -71,7 +71,7 @@ describe('citirea exportului SAGA', () => {
   })
 
   it('clasifică după cont, nu după eticheta liberă', async () => {
-    const randuri = citesteNomenclator(
+    const { randuri } = citesteNomenclator(
       await fisier([
         { cod_art: '00022107', denumire: 'PAT DAVID', um: 'BUC', cont: '345', den_tip: 'Marfuri' },
       ]),
@@ -81,7 +81,7 @@ describe('citirea exportului SAGA', () => {
   })
 
   it('sare peste rândurile fără cod sau fără denumire', async () => {
-    const randuri = citesteNomenclator(
+    const { randuri } = citesteNomenclator(
       await fisier([
         { cod_art: '00000018', denumire: 'CANT PAL', um: 'ML' },
         { cod_art: '', denumire: 'FĂRĂ COD', um: 'ML' },
@@ -101,7 +101,7 @@ describe('citirea exportului SAGA', () => {
 
 describe('agregarea pe articol', () => {
   it('alege gestiunea care are stoc', async () => {
-    const randuri = citesteNomenclator(
+    const { randuri } = citesteNomenclator(
       await fisier([
         { cod_art: '00000023', denumire: 'CAPSE 380/14', um: 'BUC', den_gest: 'MARFA BUZAU', cant_fin: 0 },
         { cod_art: '00000023', denumire: 'CAPSE 380/14', um: 'BUC', den_gest: 'MATERII PRIME', cant_fin: 370.1 },
@@ -113,7 +113,7 @@ describe('agregarea pe articol', () => {
   })
 
   it('preferă MATERII PRIME când nicăieri nu există stoc', async () => {
-    const randuri = citesteNomenclator(
+    const { randuri } = citesteNomenclator(
       await fisier([
         { cod_art: '00000026', denumire: 'CAPSE 92/35', um: 'BUC', den_gest: 'MARFA SEDIU', cant_fin: 0 },
         { cod_art: '00000026', denumire: 'CAPSE 92/35', um: 'BUC', den_gest: 'MATERII PRIME', cant_fin: 0 },
@@ -125,7 +125,7 @@ describe('agregarea pe articol', () => {
   it('ia cel mai mare preț mediu nenul dintre gestiuni', async () => {
     // O gestiune fără stoc raportează preț zero; luat ca atare, ar face
     // antecalculația să iasă gratis.
-    const randuri = citesteNomenclator(
+    const { randuri } = citesteNomenclator(
       await fisier([
         { cod_art: '00000018', denumire: 'CANT PAL', um: 'ML', den_gest: 'MATERII PRIME', cant_fin: 0, pret_mediu: 0 },
         { cod_art: '00000018', denumire: 'CANT PAL', um: 'ML', den_gest: 'MARFA CONSTANTA', cant_fin: 3, pret_mediu: 384.03 },
@@ -139,8 +139,8 @@ describe('agregarea pe articol', () => {
       { cod_art: '00000031', denumire: 'CARTON MUCAVA', um: 'BUC', den_gest: 'MARFA SEDIU', cant_fin: 0 },
       { cod_art: '00000031', denumire: 'CARTON MUCAVA', um: 'BUC', den_gest: 'MARFA BUZAU', cant_fin: 0 },
     ])
-    const unu = agregaArticole(citesteNomenclator(continut))
-    const doi = agregaArticole(citesteNomenclator(continut))
+    const unu = agregaArticole(citesteNomenclator(continut).randuri)
+    const doi = agregaArticole(citesteNomenclator(continut).randuri)
     expect(unu).toEqual(doi)
     expect(unu[0]?.gestiuneImplicita).toBe('MARFA BUZAU')
   })

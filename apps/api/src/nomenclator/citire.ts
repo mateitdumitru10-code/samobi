@@ -57,7 +57,20 @@ function numar(text: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
-export function citesteNomenclator(continut: Buffer): RandNomenclator[] {
+export interface NomenclatorCitit {
+  randuri: RandNomenclator[]
+  /**
+   * Which columns the file actually carried.
+   *
+   * SAGA has more than one export screen. The stock report brings warehouses,
+   * accounts and average prices; the article list brings none of those. Without
+   * knowing which, an import overwrites with null what the file simply never
+   * mentioned — that is how gestiune, cont and preț were wiped once.
+   */
+  coloane: Set<string>
+}
+
+export function citesteNomenclator(continut: Buffer): NomenclatorCitit {
   let foaie
   try {
     foaie = citesteXlsx(continut)
@@ -130,5 +143,5 @@ export function citesteNomenclator(continut: Buffer): RandNomenclator[] {
     throw new CerereInvalida('Fișierul nu conține niciun articol.')
   }
 
-  return randuri
+  return { randuri, coloane: new Set(Object.keys(coloane)) }
 }

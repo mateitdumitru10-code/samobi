@@ -45,14 +45,21 @@ function schimbari(
     pretReferinta: string | null
   },
   nou: ArticolAgregat,
+  coloane: ReadonlySet<string>,
 ): string[] {
   const lista: string[] = []
   if (!egal(vechi.denumire, nou.denumire)) lista.push('denumire')
   if (!egal(vechi.um, nou.um)) lista.push('um')
   if (!egal(vechi.tip, nou.tip)) lista.push('tip')
-  if (!egal(vechi.cont, nou.cont)) lista.push('cont')
-  if (!egal(vechi.gestiuneImplicita, nou.gestiuneImplicita)) lista.push('gestiune')
-  if (!egalNumeric(vechi.pretReferinta, nou.pretReferinta)) lista.push('pret')
+  // A column the file does not carry cannot have changed. Counting it as a
+  // difference made a harmless import look like it rewrote the whole catalogue.
+  if (coloane.has('cont') && !egal(vechi.cont, nou.cont)) lista.push('cont')
+  if (coloane.has('gestiune') && !egal(vechi.gestiuneImplicita, nou.gestiuneImplicita)) {
+    lista.push('gestiune')
+  }
+  if (coloane.has('pret') && !egalNumeric(vechi.pretReferinta, nou.pretReferinta)) {
+    lista.push('pret')
+  }
   return lista
 }
 
@@ -71,7 +78,7 @@ export async function importaNomenclator(
   continut: Buffer,
   optiuni: OptiuniImport,
 ): Promise<RaportImport> {
-  const randuri = citesteNomenclator(continut)
+  const { randuri, coloane } = citesteNomenclator(continut)
   const articole = agregaArticole(randuri)
 
   const existente = await db
@@ -105,7 +112,7 @@ export async function importaNomenclator(
       }
       continue
     }
-    const diferente = schimbari(vechi, articol)
+    const diferente = schimbari(vechi, articol, coloane)
     if (diferente.length === 0) {
       neschimbate += 1
       continue
@@ -146,17 +153,29 @@ export async function importaNomenclator(
       )
       .onConflictDoUpdate({
         target: sagaArticle.codSaga,
+        // Only the columns this file actually carries. Everything else keeps
+        // what it already had: an export that omits a column is silent about it,
+        // not asserting that it is empty.
         set: {
           denumire: sql`excluded.denumire`,
           um: sql`excluded.um`,
           umNormalizat: sql`excluded.um_normalizat`,
           tip: sql`excluded.tip`,
-          tipSaga: sql`excluded.tip_saga`,
-          cont: sql`excluded.cont`,
-          gestiuneImplicita: sql`excluded.gestiune_implicita`,
-          // A category the export cannot supply must not erase one set by hand.
-          categorie: sql`coalesce(excluded.categorie, ${sagaArticle.categorie})`,
-          pretReferinta: sql`excluded.pret_referinta`,
+          ...(coloane.has('tipSaga') ? { tipSaga: sql`excluded.tip_saga` } : {}),
+          ...(coloane.has('cont')
+            ? { cont: sql`coalesce(excluded.cont, ${sagaArticle.cont})` }
+            : {}),
+          ...(coloane.has('gestiune')
+            ? {
+                gestiuneImplicita: sql`coalesce(excluded.gestiune_implicita, ${sagaArticle.gestiuneImplicita})`,
+              }
+            : {}),
+          ...(coloane.has('categorie')
+            ? { categorie: sql`coalesce(excluded.categorie, ${sagaArticle.categorie})` }
+            : {}),
+          ...(coloane.has('pret')
+            ? { pretReferinta: sql`coalesce(excluded.pret_referinta, ${sagaArticle.pretReferinta})` }
+            : {}),
           activ: sql`true`,
           sincronizatLa: acum,
         },
