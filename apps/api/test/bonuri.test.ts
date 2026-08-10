@@ -341,7 +341,7 @@ describe.skipIf(!areBazaDeDate)('bonuri și export', () => {
     await app.close()
   })
 
-  it('exportă cu unitatea din rețetar și raportează diferențele față de SAGA', async () => {
+  it('exportă cu unitatea din rețetar, oricare ar fi cea din catalog', async () => {
     // 00000023 CAPSE 380/14 este în BUC în nomenclator; rețetarul îl dă în MIIB.
     // Trimis așa, SAGA înregistrează de o mie de ori mai puțin.
     const [linie] = await clientSql`
@@ -367,11 +367,8 @@ describe.skipIf(!areBazaDeDate)('bonuri și export', () => {
         confirmaReexport: true,
       },
     })
-    // Fișierul pleacă cu unitatea din rețetar, care e sursa de adevăr; articolele
-    // pe care SAGA le ține altfel sunt raportate, nu blocate.
+    // SAGA ia unitatea din fișier, deci rețetarul decide. Exportul trece.
     expect(res.statusCode).toBe(200)
-    const lot = res.json() as { umDiferite: { codSaga: string; umBon: string; umSaga: string }[] }
-    expect(lot.umDiferite.length).toBeGreaterThan(0)
     await app.close()
   })
 

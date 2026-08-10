@@ -36,14 +36,6 @@ interface Consum {
   sursa: string
 }
 
-interface AvertismentUm {
-  codSaga: string
-  denumire: string
-  umReteta: string
-  umSaga: string
-  factor: number | null
-}
-
 interface RandBon {
   id: string
   nrDoc: string | null
@@ -113,7 +105,7 @@ function BonNou() {
 
   const previzualizare = useMutation({
     mutationFn: () =>
-      apel<{ linii: Consum[]; avertismenteUm: AvertismentUm[] }>('/bonuri/previzualizare', {
+      apel<{ linii: Consum[] }>('/bonuri/previzualizare', {
         metoda: 'POST',
         corp: { modelId, dimensiuneId, cantitate, alegeri },
       }),
@@ -284,31 +276,6 @@ function BonNou() {
         </p>
       )}
 
-      {(previzualizare.data?.avertismenteUm.length ?? 0) > 0 && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm">
-          <p className="font-medium text-red-900">
-            Unități de măsură diferite față de SAGA ({previzualizare.data?.avertismenteUm.length})
-          </p>
-          <p className="mt-1 text-red-800">
-            Rețetarul e sursa de adevăr, deci SAGA trebuie corectată. Până atunci, importul
-            înregistrează cantitatea în unitatea greșită.
-          </p>
-          <ul className="mt-2 space-y-0.5 text-red-900">
-            {previzualizare.data?.avertismenteUm.map((a) => (
-              <li key={a.codSaga}>
-                <span className="font-mono text-xs">{a.codSaga}</span> {a.denumire} — rețetar{' '}
-                <strong>{a.umReteta}</strong>, SAGA <strong>{a.umSaga}</strong>
-                {a.factor !== null && (
-                  <span className="ml-1 font-medium">
-                    · s-ar înregistra de {a.factor > 1 ? a.factor : 1 / a.factor}× {a.factor > 1 ? 'mai puțin' : 'mai mult'}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {previzualizare.data !== undefined && (
         <TabelConsumuri linii={previzualizare.data.linii} />
       )}
@@ -457,9 +424,6 @@ function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
   const queryClient = useQueryClient()
   const [selectate, setSelectate] = useState<string[]>([])
   const [confirmaReexport, setConfirmaReexport] = useState(false)
-  const [umDiferite, setUmDiferite] = useState<
-    { codSaga: string; denumire: string; umBon: string; umSaga: string }[]
-  >([])
 
   const bonuri = useQuery({
     queryKey: ['bonuri'],
@@ -468,19 +432,13 @@ function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
 
   const exporta = useMutation({
     mutationFn: () =>
-      apel<{
-        id: string
-        nrLinii: number
-        nrBonuri: number
-        umDiferite: { codSaga: string; denumire: string; umBon: string; umSaga: string }[]
-      }>('/export', {
+      apel<{ id: string; nrLinii: number; nrBonuri: number }>('/export', {
         metoda: 'POST',
         corp: { bonIds: selectate, confirmaReexport },
       }),
     onSuccess: async (lot) => {
       setSelectate([])
       setConfirmaReexport(false)
-      setUmDiferite(lot.umDiferite)
       await queryClient.invalidateQueries({ queryKey: ['bonuri'] })
       const { url } = await apel<{ url: string }>(`/export/${lot.id}/descarcare`)
       window.location.assign(url)
@@ -512,24 +470,6 @@ function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
           </button>
         )}
       </div>
-
-      {umDiferite.length > 0 && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
-          <p className="font-medium text-amber-900">
-            Fișierul folosește unitățile din rețetar. {umDiferite.length}{' '}
-            {umDiferite.length === 1 ? 'articol are' : 'articole au'} altă unitate în SAGA — de
-            corectat acolo, altfel cantitatea se înregistrează în unitatea lui.
-          </p>
-          <ul className="mt-2 space-y-0.5 text-amber-900">
-            {umDiferite.map((u) => (
-              <li key={u.codSaga}>
-                <span className="font-mono text-xs">{u.codSaga}</span> {u.denumire} — rețetar{' '}
-                <strong>{u.umBon}</strong>, SAGA <strong>{u.umSaga}</strong>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {exporta.isError && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm">

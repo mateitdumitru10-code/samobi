@@ -7,7 +7,6 @@ import {
   sagaArticle,
 } from '@samobi/shared/db'
 import { EroareCalcul } from '@samobi/shared/calcul'
-import { normalizeazaUm } from '@samobi/shared/nomenclator'
 import { schemaBonNou, schemaExport, schemaPrevizualizare } from '@samobi/shared/scheme'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
@@ -63,8 +62,8 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
   app.post('/bonuri/previzualizare', poateEmite, async (cerere) => {
     const date = schemaPrevizualizare.parse(cerere.body)
     try {
-      const { linii, avertismenteUm } = await calculeazaCuDenumiri(date)
-      return { linii, avertismenteUm }
+      const { linii } = await calculeazaCuDenumiri(date)
+      return { linii }
     } catch (err) {
       if (err instanceof EroareCalcul) throw new CerereInvalida(err.message)
       throw err
@@ -143,9 +142,7 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
       diff: { model: date.modelId, dimensiune: dim.cod, cantitate: date.cantitate },
     })
 
-    return raspuns
-      .status(201)
-      .send({ ...bon, linii: calcul.linii, avertismenteUm: calcul.avertismenteUm })
+    return raspuns.status(201).send({ ...bon, linii: calcul.linii })
   })
 
   app.get('/bonuri', oricine, async (cerere) => {
@@ -239,34 +236,12 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
         um: productionOrderLine.um,
         cantitateBruta: productionOrderLine.cantitateBruta,
         denumire: sagaArticle.denumire,
-        umSaga: sagaArticle.um,
       })
       .from(productionOrderLine)
       .leftJoin(sagaArticle, eq(sagaArticle.codSaga, productionOrderLine.codSaga))
       .where(inArray(productionOrderLine.productionOrderId, bonIds))
 
     if (linii.length === 0) throw new CerereInvalida('Bonurile alese nu au linii de consum.')
-
-    /**
-     * The file carries the recipe's units, because the sheets are the source of
-     * truth. Where the catalogue disagrees, it is the catalogue that is wrong —
-     * but SAGA still has to be corrected, or it will book the quantity in its
-     * own unit. So the export goes through and says which articles to fix.
-     */
-    const umDiferite = [
-      ...new Map(
-        linii
-          .filter((l) => {
-            const a = (normalizeazaUm(l.um) ?? '').toUpperCase()
-            const b = (normalizeazaUm(l.umSaga ?? '') ?? '').toUpperCase()
-            return a !== '' && b !== '' && a !== b
-          })
-          .map((l) => [
-            l.codSaga,
-            { codSaga: l.codSaga, denumire: l.denumire ?? l.codSaga, umBon: l.um, umSaga: l.umSaga ?? '' },
-          ]),
-      ).values(),
-    ]
 
     // Aggregate across bons, then round once, at the end.
     const cumulat = new Map<string, { denumire: string; um: string; total: number }>()
@@ -338,9 +313,6 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
       nrLinii: randuri.length,
       hashContinut: hash,
       randuri,
-      // Not a refusal, but not silent either: these articles are booked in the
-      // recipe's unit and SAGA still holds them in another one.
-      umDiferite,
     }
   })
 

@@ -11,7 +11,6 @@ import {
   type LinieReteta,
   type RezultatCalcul,
 } from '@samobi/shared/calcul'
-import { normalizeazaUm } from '@samobi/shared/nomenclator'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 
 import { db } from '../db.js'
@@ -122,15 +121,6 @@ export async function incarcaPentruCalcul(modelId: string, dimensiuneId: string)
   }
 }
 
-export interface AvertismentUm {
-  codSaga: string
-  denumire: string
-  umReteta: string
-  umSaga: string
-  /** How far off the booking would be if the quantity went over unconverted. */
-  factor: number | null
-}
-
 export interface ConsumCuDenumire {
   codSaga: string
   denumire: string
@@ -138,43 +128,9 @@ export interface ConsumCuDenumire {
   gestiuneDescarcare: string | null
   cantitateNeta: string
   cantitateBruta: string
-  umReteta: string
-  /** What the catalogue says, for the warning only — never what is exported. */
-  umSaga: string | null
   cantitateBrutaRotunjita: string
   sursa: string
   contributii: RezultatCalcul['linii'][number]['contributii']
-}
-
-/** Units whose difference is a factor, not a kind. Those misbook silently. */
-const FACTOR: Readonly<Record<string, number>> = { BUC: 1, SUTEB: 100, MIIB: 1000 }
-
-/**
- * Where the recipe and the catalogue disagree about the unit.
- *
- * CAPSE 380/14 is 1,1 MIIB on the sheet — 1.100 staples — while SAGA holds the
- * article in BUC. Sent as written, SAGA books 1,1 pieces, and nothing in the
- * file looks wrong. The recipe sheets are the source of truth, so the fix is in
- * SAGA; until then this is what says so.
- */
-function avertismenteUm(linii: readonly ConsumCuDenumire[]): AvertismentUm[] {
-  const out: AvertismentUm[] = []
-  for (const linie of linii) {
-    const a = (normalizeazaUm(linie.umReteta) ?? '').toUpperCase()
-    const b = (normalizeazaUm(linie.umSaga ?? '') ?? '').toUpperCase()
-    if (a === '' || b === '' || a === b) continue
-
-    const fa = FACTOR[a]
-    const fb = FACTOR[b]
-    out.push({
-      codSaga: linie.codSaga,
-      denumire: linie.denumire,
-      umReteta: linie.umReteta,
-      umSaga: linie.umSaga ?? '',
-      factor: fa !== undefined && fb !== undefined ? fa / fb : null,
-    })
-  }
-  return out
 }
 
 /** Runs the engine and attaches the catalogue names the operator needs to see. */
@@ -224,13 +180,11 @@ export async function calculeazaCuDenumiri(intrare: {
       /**
        * The recipe's unit, always.
        *
-       * The sheets are the source of truth for units — that is the tehnolog's
-       * ruling, and the catalogue is what gets corrected where the two differ.
-       * SAGA's own unit is still read, but only to point out the disagreement.
+       * SAGA's import takes the unit from the file rather than from the article
+       * it already holds, so the file is what defines the booking. The sheets
+       * are the source of truth, and this is where that becomes literal.
        */
       um: linie.um,
-      umReteta: linie.um,
-      umSaga: (articol?.um ?? '').trim() === '' ? null : (articol?.um ?? null),
       gestiuneDescarcare: linie.gestiuneDescarcare ?? articol?.gestiuneImplicita ?? null,
       cantitateNeta: linie.cantitateNeta,
       cantitateBruta: linie.cantitateBruta,
@@ -240,5 +194,5 @@ export async function calculeazaCuDenumiri(intrare: {
     }
   })
 
-  return { context, rezultat, linii, avertismenteUm: avertismenteUm(linii) }
+  return { context, rezultat, linii }
 }

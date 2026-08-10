@@ -7,15 +7,16 @@ import ExcelJS from 'exceljs'
 import { clientSql } from '../src/db.js'
 
 /**
- * Where the recipe sheets and SAGA disagree about a unit of measure.
+ * Where the recipe sheets and the catalogue disagree about a unit of measure.
  *
- * The sheets are the source of truth, so this is a list of articles to correct
- * in SAGA — not a list of recipes to change.
+ * Not an import problem: SAGA takes the unit from the file, so the export is
+ * correct whatever the article says. This is a mapping check.
  *
- * It matters more than a spelling difference. CAPSE 380/14 is 1,1 MIIB on the
- * sheet, meaning 1.100 staples, while SAGA holds the article in BUC. Sent as
- * written, SAGA books 1,1 pieces. The error is a factor of a thousand and
- * nothing in the file looks wrong.
+ * A unit that differs by a factor — MIIB against BUC — is usually nothing, just
+ * two ways of counting the same staples. A unit that cannot convert at all is a
+ * different matter: CUIE is MIIB on the sheet and 00001228 CUIE is held in KG,
+ * and thousands of pieces do not become kilograms. That is not a unit
+ * disagreement, it is the wrong article.
  *
  *   pnpm --filter @samobi/api raport-um-reteta
  */
@@ -49,55 +50,50 @@ const randuri = await clientSql<Rand[]>`
   group by rl.cod_saga, rl.um
   order by count(*) desc, min(a.denumire)`
 
-/**
- * Units that differ by a factor rather than in kind.
- *
- * These are the dangerous ones: the quantity is right and the unit is wrong, so
- * the booking is off by exactly a thousand or a hundred and looks plausible.
- */
+/** Units that count the same thing at a different scale. */
 const FACTOR: Readonly<Record<string, number>> = { BUC: 1, SUTEB: 100, MIIB: 1000 }
 
-function gravitate(umReteta: string, umSaga: string): { fel: string; nota: string } {
+function verdict(umReteta: string, umSaga: string): { fel: string; nota: string } {
   const a = normalizeazaUm(umReteta) ?? umReteta
   const b = normalizeazaUm(umSaga) ?? umSaga
 
   if (a === b) return { fel: 'doar scriere', nota: 'aceeași unitate, scrisă altfel' }
 
-  const fa = FACTOR[a]
-  const fb = FACTOR[b]
-  if (fa !== undefined && fb !== undefined) {
-    const raport = fa / fb
+  if (FACTOR[a] !== undefined && FACTOR[b] !== undefined) {
     return {
-      fel: 'FACTOR',
-      nota: `cantitatea ar fi de ${raport > 1 ? raport : 1 / raport}× ${raport > 1 ? 'mai mică' : 'mai mare'} în SAGA`,
+      fel: 'aceeași măsură',
+      nota: 'bucăți numărate la altă scară — maparea e probabil bună',
     }
   }
-  return { fel: 'unități diferite', nota: 'nu se convertesc una în alta — verifică maparea' }
+  return {
+    fel: 'VERIFICĂ MAPAREA',
+    nota: 'unitățile nu se convertesc — probabil e alt articol',
+  }
 }
 
 const registru = new ExcelJS.Workbook()
 registru.creator = 'Samobi'
-const foaie = registru.addWorksheet('UM de corectat')
+const foaie = registru.addWorksheet('UM de verificat')
 
 foaie.addRow([
   'Cod SAGA',
   'Denumire în SAGA',
   'UM în rețetar',
   'UM în SAGA',
-  'Gravitate',
-  'Ce se întâmplă la import',
+  'Verdict',
+  'Ce înseamnă',
   'Linii',
   'Cantități în rețetar',
   'Rețete',
 ])
 foaie.getRow(1).font = { bold: true }
 
-let factor = 0
+let scara = 0
 let scriere = 0
 
 for (const r of randuri) {
-  const g = gravitate(r.um_reteta, r.um_saga)
-  if (g.fel === 'FACTOR') factor += 1
+  const g = verdict(r.um_reteta, r.um_saga)
+  if (g.fel === 'aceeași măsură') scara += 1
   if (g.fel === 'doar scriere') scriere += 1
 
   const min = Number(r.cantitate_min)
@@ -127,25 +123,26 @@ foaie.getColumn(7).width = 8
 foaie.getColumn(8).width = 20
 foaie.getColumn(9).width = 60
 
-const cale = resolve(import.meta.dirname, '..', '..', '..', 'docs', 'um-de-corectat-in-saga.xlsx')
+const cale = resolve(import.meta.dirname, '..', '..', '..', 'docs', 'um-de-verificat.xlsx')
 writeFileSync(cale, Buffer.from(await registru.xlsx.writeBuffer()))
 
 const [total] = await clientSql<{ c: number }[]>`
   select count(*)::int c from recipe_line where cod_saga is not null`
 
 console.log(`${randuri.length} articole cu UM diferită de rețetar.`)
-console.log(`  ${factor} periculoase — diferă printr-un factor de 100 sau 1000`)
-console.log(`  ${scriere} doar ca scriere, aceeași unitate`)
-console.log(`  ${randuri.length - factor - scriere} unități care nu se convertesc — verifică maparea`)
+console.log(`  ${scara} aceeași măsură la altă scară — maparea e probabil bună`)
+console.log(`  ${scriere} doar ca scriere`)
+console.log(`  ${randuri.length - scara - scriere} de verificat — unitățile nu se convertesc`)
 console.log(`\ndin ${total?.c ?? 0} linii de rețetă cu cod SAGA.`)
-console.log('Scris în docs/um-de-corectat-in-saga.xlsx')
+console.log('Scris în docs/um-de-verificat.xlsx')
 
-console.log('\nCele mai periculoase:')
-for (const r of randuri.slice(0, 12)) {
-  const g = gravitate(r.um_reteta, r.um_saga)
-  if (g.fel !== 'FACTOR') continue
+console.log('\nDe verificat, cele mai multe linii:')
+let aratate = 0
+for (const r of randuri) {
+  if (verdict(r.um_reteta, r.um_saga).fel !== 'VERIFICĂ MAPAREA' || aratate >= 12) continue
+  aratate += 1
   console.log(
-    `  ${r.cod_saga}  ${r.denumire.slice(0, 32).padEnd(32)} rețetar ${r.um_reteta.padEnd(7)} SAGA ${r.um_saga.padEnd(6)} ${g.nota}`,
+    `  ${r.cod_saga}  ${r.denumire.slice(0, 34).padEnd(34)} rețetar ${r.um_reteta.padEnd(7)} SAGA ${r.um_saga.padEnd(6)} ${r.nr_linii} linii`,
   )
 }
 
