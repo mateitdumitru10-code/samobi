@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Environment — never commit. SUPABASE_SERVICE_ROLE_KEY lives here.
+.env
+.env.*
+!.env.example
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+*.log
