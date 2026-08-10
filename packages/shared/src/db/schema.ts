@@ -117,6 +117,15 @@ export const sagaArticle = pgTable(
      * pretending the figure is live.
      */
     stoc: cantitate('stoc'),
+    /**
+     * The unit price SAGA last used when this article was consumed on a bon.
+     *
+     * Kept apart from `pret_referinta`, which is the catalogue's weighted
+     * average: they answer different questions, and the average is missing for
+     * five sixths of the catalogue. Costing falls back to this one, and says so.
+     */
+    pretConsum: cantitate('pret_consum'),
+    pretConsumLa: date('pret_consum_la'),
     activ: boolean('activ').notNull().default(true),
     sincronizatLa: timestamp('sincronizat_la', { withTimezone: true }),
   },

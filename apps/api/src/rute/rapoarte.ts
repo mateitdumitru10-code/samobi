@@ -20,11 +20,12 @@ import { CerereInvalida } from '../erori.js'
 /**
  * Reports, and the honesty they require.
  *
- * Reference prices come from SAGA's average price, and most of the catalogue has
- * none: a fifth of the articles a recipe touches carry a figure. Every report
- * here therefore states how much of its own total is actually priced, because a
- * cost that silently ignores two thirds of the materials is worse than no cost
- * at all — it looks like an answer.
+ * A price is the catalogue's weighted average where SAGA has one, and otherwise
+ * the unit price the article last went out at on a production bon. Even so, a
+ * good half of the lines a recipe touches carry no figure at all. Every report
+ * here states how much of its own total is actually priced, because a cost that
+ * silently ignores half the materials is worse than no cost — it looks like an
+ * answer.
  */
 
 const schemaPerioada = z.object({
@@ -79,7 +80,9 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
         : await db
             .select({
               codSaga: sagaArticle.codSaga,
-              pretReferinta: sagaArticle.pretReferinta,
+              // The average if the catalogue has one, otherwise the last price
+              // the article was actually consumed at.
+              pretReferinta: sql<string | null>`coalesce(${sagaArticle.pretReferinta}, ${sagaArticle.pretConsum})`,
             })
             .from(sagaArticle)
             .where(inArray(sagaArticle.codSaga, coduri))
@@ -175,7 +178,7 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
         cantitateBruta: productionOrderLine.cantitateBruta,
         denumire: sagaArticle.denumire,
         stoc: sagaArticle.stoc,
-        pret: sagaArticle.pretReferinta,
+        pret: sql<string | null>`coalesce(${sagaArticle.pretReferinta}, ${sagaArticle.pretConsum})`,
         gestiune: sagaArticle.gestiuneImplicita,
       })
       .from(productionOrderLine)
@@ -256,7 +259,7 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
         codSaga: productionOrderLine.codSaga,
         cantitateNeta: productionOrderLine.cantitateNeta,
         cantitateBruta: productionOrderLine.cantitateBruta,
-        pret: sagaArticle.pretReferinta,
+        pret: sql<string | null>`coalesce(${sagaArticle.pretReferinta}, ${sagaArticle.pretConsum})`,
       })
       .from(productionOrderLine)
       .innerJoin(productionOrder, eq(productionOrder.id, productionOrderLine.productionOrderId))

@@ -94,9 +94,11 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
         obligatoriu: recipeLine.obligatoriu,
         observatii: recipeLine.observatii,
         denumireMaterial: sagaArticle.denumire,
-        // The catalogue's average price, so a line's cost is visible while the
-        // recipe is being written rather than only in a report afterwards.
+        // The catalogue's average when there is one, otherwise what the article
+        // last cost on a bon. Both are stated, so the grid can say which it used.
         pretReferinta: sagaArticle.pretReferinta,
+        pretConsum: sagaArticle.pretConsum,
+        pretConsumLa: sagaArticle.pretConsumLa,
         umSaga: sagaArticle.um,
       })
       .from(recipeLine)

@@ -42,6 +42,8 @@ interface LinieServer {
   observatii: string | null
   denumireMaterial: string | null
   pretReferinta: string | null
+  pretConsum: string | null
+  pretConsumLa: string | null
   umSaga: string | null
   valoriPeDimensiuni: ValoareServer[]
 }
@@ -78,6 +80,9 @@ interface Linie {
   gestiuneDescarcare: string
   observatii: string
   pret: number | null
+  /** Where the price came from, so the grid does not present a guess as a fact. */
+  sursaPret: 'nomenclator' | 'consum' | null
+  pretLa: string | null
   valori: Record<string, Valoare>
 }
 
@@ -109,7 +114,15 @@ function dinServer(linie: LinieServer): Linie {
     procentPierderi: linie.procentPierderi,
     gestiuneDescarcare: linie.gestiuneDescarcare ?? '',
     observatii: linie.observatii ?? '',
-    pret: linie.pretReferinta === null ? null : Number(linie.pretReferinta),
+    pret:
+      linie.pretReferinta !== null
+        ? Number(linie.pretReferinta)
+        : linie.pretConsum !== null
+          ? Number(linie.pretConsum)
+          : null,
+    sursaPret:
+      linie.pretReferinta !== null ? 'nomenclator' : linie.pretConsum !== null ? 'consum' : null,
+    pretLa: linie.pretConsumLa,
     valori,
   }
 }
@@ -132,6 +145,8 @@ function linieNoua(nrLinie: number): Linie {
     gestiuneDescarcare: '',
     observatii: '',
     pret: null,
+    sursaPret: null,
+    pretLa: null,
     valori: {},
   }
 }
@@ -552,7 +567,16 @@ export function RetetaEditor({
                     {linie.pret === null ? (
                       <span className="text-xs text-amber-700">fără preț</span>
                     ) : (
-                      linie.pret.toLocaleString('ro-RO', { maximumFractionDigits: 2 })
+                      <span
+                        title={
+                          linie.sursaPret === 'consum'
+                            ? `din ultimul consum, ${linie.pretLa ?? ''}`
+                            : 'preț mediu din nomenclator'
+                        }
+                        className={linie.sursaPret === 'consum' ? 'text-blue-700' : ''}
+                      >
+                        {linie.pret.toLocaleString('ro-RO', { maximumFractionDigits: 2 })}
+                      </span>
                     )}
                   </td>
 

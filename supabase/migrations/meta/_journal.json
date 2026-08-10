@@ -22,6 +22,13 @@
       "when": 1786366944713,
       "tag": "20260810130224_breezy_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786368238202,
+      "tag": "20260810132358_pret_din_consum",
+      "breakpoints": true
     }
   ]
 }

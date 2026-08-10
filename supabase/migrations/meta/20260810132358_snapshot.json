@@ -1,0 +1,1971 @@
+{
+  "id": "309088e1-ba6c-4192-9f5b-57384ebca319",
+  "prevId": "55c7f274-d022-4aa1-ba1c-e91699299d5f",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.audit_log": {
+      "name": "audit_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entitate": {
+          "name": "entitate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entitate_id": {
+          "name": "entitate_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actiune": {
+          "name": "actiune",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "diff": {
+          "name": "diff",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ip": {
+          "name": "ip",
+          "type": "inet",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creat_la": {
+          "name": "creat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "audit_log_entitate_idx": {
+          "name": "audit_log_entitate_idx",
+          "columns": [
+            {
+              "expression": "entitate",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "entitate_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_creat_la_idx": {
+          "name": "audit_log_creat_la_idx",
+          "columns": [
+            {
+              "expression": "creat_la",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_user_idx": {
+          "name": "audit_log_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.dimension": {
+      "name": "dimension",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod": {
+          "name": "cod",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lungime": {
+          "name": "lungime",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "latime": {
+          "name": "latime",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inaltime": {
+          "name": "inaltime",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cod_saga_produs": {
+          "name": "cod_saga_produs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "activ": {
+          "name": "activ",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "creat_la": {
+          "name": "creat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "dimension_model_idx": {
+          "name": "dimension_model_idx",
+          "columns": [
+            {
+              "expression": "model_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "dimension_model_id_model_id_fk": {
+          "name": "dimension_model_id_model_id_fk",
+          "tableFrom": "dimension",
+          "tableTo": "model",
+          "columnsFrom": [
+            "model_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "dimension_cod_saga_produs_saga_article_cod_saga_fk": {
+          "name": "dimension_cod_saga_produs_saga_article_cod_saga_fk",
+          "tableFrom": "dimension",
+          "tableTo": "saga_article",
+          "columnsFrom": [
+            "cod_saga_produs"
+          ],
+          "columnsTo": [
+            "cod_saga"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "dimension_model_cod_unic": {
+          "name": "dimension_model_cod_unic",
+          "nullsNotDistinct": false,
+          "columns": [
+            "model_id",
+            "cod"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "dimension_lungime_pozitiva": {
+          "name": "dimension_lungime_pozitiva",
+          "value": "\"dimension\".\"lungime\" > 0"
+        },
+        "dimension_latime_pozitiva": {
+          "name": "dimension_latime_pozitiva",
+          "value": "\"dimension\".\"latime\" > 0"
+        },
+        "dimension_inaltime_pozitiva": {
+          "name": "dimension_inaltime_pozitiva",
+          "value": "\"dimension\".\"inaltime\" is null or \"dimension\".\"inaltime\" > 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.export_batch": {
+      "name": "export_batch",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "generat_de": {
+          "name": "generat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "generat_la": {
+          "name": "generat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "hash_continut": {
+          "name": "hash_continut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nr_bonuri": {
+          "name": "nr_bonuri",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nr_linii": {
+          "name": "nr_linii",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_path": {
+          "name": "storage_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "export_batch_generat_la_idx": {
+          "name": "export_batch_generat_la_idx",
+          "columns": [
+            {
+              "expression": "generat_la",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "export_batch_generat_de_profile_id_fk": {
+          "name": "export_batch_generat_de_profile_id_fk",
+          "tableFrom": "export_batch",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "generat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "export_batch_nr_bonuri_pozitiv": {
+          "name": "export_batch_nr_bonuri_pozitiv",
+          "value": "\"export_batch\".\"nr_bonuri\" > 0"
+        },
+        "export_batch_nr_linii_pozitiv": {
+          "name": "export_batch_nr_linii_pozitiv",
+          "value": "\"export_batch\".\"nr_linii\" > 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.model": {
+      "name": "model",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cod": {
+          "name": "cod",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "denumire": {
+          "name": "denumire",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "familie": {
+          "name": "familie",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "um_produs": {
+          "name": "um_produs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'BUC'"
+        },
+        "activ": {
+          "name": "activ",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "creat_de": {
+          "name": "creat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creat_la": {
+          "name": "creat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "modificat_la": {
+          "name": "modificat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "model_creat_de_profile_id_fk": {
+          "name": "model_creat_de_profile_id_fk",
+          "tableFrom": "model",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "creat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "model_cod_unique": {
+          "name": "model_cod_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "cod"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "model_familie_valida": {
+          "name": "model_familie_valida",
+          "value": "\"model\".\"familie\" in ('PAT', 'CANAPEA', 'COLTAR', 'SALTEA', 'ALTELE')"
+        },
+        "model_cod_nevid": {
+          "name": "model_cod_nevid",
+          "value": "length(btrim(\"model\".\"cod\")) > 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.production_order": {
+      "name": "production_order",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nr_doc": {
+          "name": "nr_doc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data": {
+          "name": "data",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gestiune_produs": {
+          "name": "gestiune_produs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dimension_id": {
+          "name": "dimension_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipe_id": {
+          "name": "recipe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod_saga_produs": {
+          "name": "cod_saga_produs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantitate": {
+          "name": "cantitate",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pret_prestabilit": {
+          "name": "pret_prestabilit",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "export_id": {
+          "name": "export_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creat_de": {
+          "name": "creat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creat_la": {
+          "name": "creat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "production_order_status_idx": {
+          "name": "production_order_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "production_order_data_idx": {
+          "name": "production_order_data_idx",
+          "columns": [
+            {
+              "expression": "data",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "production_order_export_idx": {
+          "name": "production_order_export_idx",
+          "columns": [
+            {
+              "expression": "export_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "production_order_model_id_model_id_fk": {
+          "name": "production_order_model_id_model_id_fk",
+          "tableFrom": "production_order",
+          "tableTo": "model",
+          "columnsFrom": [
+            "model_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "production_order_dimension_id_dimension_id_fk": {
+          "name": "production_order_dimension_id_dimension_id_fk",
+          "tableFrom": "production_order",
+          "tableTo": "dimension",
+          "columnsFrom": [
+            "dimension_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "production_order_recipe_id_recipe_id_fk": {
+          "name": "production_order_recipe_id_recipe_id_fk",
+          "tableFrom": "production_order",
+          "tableTo": "recipe",
+          "columnsFrom": [
+            "recipe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "production_order_cod_saga_produs_saga_article_cod_saga_fk": {
+          "name": "production_order_cod_saga_produs_saga_article_cod_saga_fk",
+          "tableFrom": "production_order",
+          "tableTo": "saga_article",
+          "columnsFrom": [
+            "cod_saga_produs"
+          ],
+          "columnsTo": [
+            "cod_saga"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "production_order_export_id_export_batch_id_fk": {
+          "name": "production_order_export_id_export_batch_id_fk",
+          "tableFrom": "production_order",
+          "tableTo": "export_batch",
+          "columnsFrom": [
+            "export_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "production_order_creat_de_profile_id_fk": {
+          "name": "production_order_creat_de_profile_id_fk",
+          "tableFrom": "production_order",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "creat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "production_order_status_valid": {
+          "name": "production_order_status_valid",
+          "value": "\"production_order\".\"status\" in ('draft', 'calculat', 'exportat', 'anulat')"
+        },
+        "production_order_cantitate_pozitiva": {
+          "name": "production_order_cantitate_pozitiva",
+          "value": "\"production_order\".\"cantitate\" > 0"
+        },
+        "production_order_pret_pozitiv": {
+          "name": "production_order_pret_pozitiv",
+          "value": "\"production_order\".\"pret_prestabilit\" is null or \"production_order\".\"pret_prestabilit\" >= 0"
+        },
+        "production_order_export_coerent": {
+          "name": "production_order_export_coerent",
+          "value": "(\"production_order\".\"status\" = 'exportat' and \"production_order\".\"export_id\" is not null)\n          or (\"production_order\".\"status\" <> 'exportat' and \"production_order\".\"export_id\" is null)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.production_order_line": {
+      "name": "production_order_line",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "production_order_id": {
+          "name": "production_order_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod_saga": {
+          "name": "cod_saga",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "um": {
+          "name": "um",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantitate_neta": {
+          "name": "cantitate_neta",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantitate_bruta": {
+          "name": "cantitate_bruta",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sursa": {
+          "name": "sursa",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "formula_evaluata": {
+          "name": "formula_evaluata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gestiune_descarcare": {
+          "name": "gestiune_descarcare",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "production_order_line_bon_idx": {
+          "name": "production_order_line_bon_idx",
+          "columns": [
+            {
+              "expression": "production_order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "production_order_line_production_order_id_production_order_id_fk": {
+          "name": "production_order_line_production_order_id_production_order_id_fk",
+          "tableFrom": "production_order_line",
+          "tableTo": "production_order",
+          "columnsFrom": [
+            "production_order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "production_order_line_cod_saga_saga_article_cod_saga_fk": {
+          "name": "production_order_line_cod_saga_saga_article_cod_saga_fk",
+          "tableFrom": "production_order_line",
+          "tableTo": "saga_article",
+          "columnsFrom": [
+            "cod_saga"
+          ],
+          "columnsTo": [
+            "cod_saga"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "production_order_line_articol_unic": {
+          "name": "production_order_line_articol_unic",
+          "nullsNotDistinct": false,
+          "columns": [
+            "production_order_id",
+            "cod_saga"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "production_order_line_sursa_valida": {
+          "name": "production_order_line_sursa_valida",
+          "value": "\"production_order_line\".\"sursa\" in ('fixa', 'formula', 'tabel', 'override', 'manual', 'agregat')"
+        },
+        "production_order_line_neta_pozitiva": {
+          "name": "production_order_line_neta_pozitiva",
+          "value": "\"production_order_line\".\"cantitate_neta\" >= 0"
+        },
+        "production_order_line_bruta_peste_neta": {
+          "name": "production_order_line_bruta_peste_neta",
+          "value": "\"production_order_line\".\"cantitate_bruta\" >= \"production_order_line\".\"cantitate_neta\""
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.profile": {
+      "name": "profile",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nume": {
+          "name": "nume",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rol": {
+          "name": "rol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activ": {
+          "name": "activ",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "creat_de": {
+          "name": "creat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creat_la": {
+          "name": "creat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "profile_rol_idx": {
+          "name": "profile_rol_idx",
+          "columns": [
+            {
+              "expression": "rol",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "profile_id_users_id_fk": {
+          "name": "profile_id_users_id_fk",
+          "tableFrom": "profile",
+          "tableTo": "users",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "profile_creat_de_profile_id_fk": {
+          "name": "profile_creat_de_profile_id_fk",
+          "tableFrom": "profile",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "creat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "profile_rol_valid": {
+          "name": "profile_rol_valid",
+          "value": "\"profile\".\"rol\" in ('admin', 'tehnolog', 'operator', 'contabil')"
+        },
+        "profile_nume_nevid": {
+          "name": "profile_nume_nevid",
+          "value": "length(btrim(\"profile\".\"nume\")) > 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.recipe": {
+      "name": "recipe",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "versiune": {
+          "name": "versiune",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "valabil_de_la": {
+          "name": "valabil_de_la",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aprobat_de": {
+          "name": "aprobat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aprobat_la": {
+          "name": "aprobat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lock_version": {
+          "name": "lock_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "creat_de": {
+          "name": "creat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creat_la": {
+          "name": "creat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "one_active_recipe_per_model": {
+          "name": "one_active_recipe_per_model",
+          "columns": [
+            {
+              "expression": "model_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status = 'activa'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "recipe_model_id_model_id_fk": {
+          "name": "recipe_model_id_model_id_fk",
+          "tableFrom": "recipe",
+          "tableTo": "model",
+          "columnsFrom": [
+            "model_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "recipe_aprobat_de_profile_id_fk": {
+          "name": "recipe_aprobat_de_profile_id_fk",
+          "tableFrom": "recipe",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "aprobat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "recipe_creat_de_profile_id_fk": {
+          "name": "recipe_creat_de_profile_id_fk",
+          "tableFrom": "recipe",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "creat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "recipe_model_versiune_unic": {
+          "name": "recipe_model_versiune_unic",
+          "nullsNotDistinct": false,
+          "columns": [
+            "model_id",
+            "versiune"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "recipe_status_valid": {
+          "name": "recipe_status_valid",
+          "value": "\"recipe\".\"status\" in ('draft', 'in_aprobare', 'activa', 'arhivata')"
+        },
+        "recipe_versiune_pozitiva": {
+          "name": "recipe_versiune_pozitiva",
+          "value": "\"recipe\".\"versiune\" > 0"
+        },
+        "recipe_aprobare_nu_de_autor": {
+          "name": "recipe_aprobare_nu_de_autor",
+          "value": "\"recipe\".\"aprobat_de\" is null or \"recipe\".\"aprobat_de\" <> \"recipe\".\"creat_de\""
+        },
+        "recipe_aprobare_coerenta": {
+          "name": "recipe_aprobare_coerenta",
+          "value": "(\"recipe\".\"aprobat_de\" is null and \"recipe\".\"aprobat_la\" is null) or (\"recipe\".\"aprobat_de\" is not null and \"recipe\".\"aprobat_la\" is not null)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.recipe_line": {
+      "name": "recipe_line",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "recipe_id": {
+          "name": "recipe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nr_linie": {
+          "name": "nr_linie",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grup": {
+          "name": "grup",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod_saga": {
+          "name": "cod_saga",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "este_variabil": {
+          "name": "este_variabil",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "categorie_variabila": {
+          "name": "categorie_variabila",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "um": {
+          "name": "um",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mod_calcul": {
+          "name": "mod_calcul",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantitate_fixa": {
+          "name": "cantitate_fixa",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "formula": {
+          "name": "formula",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "procent_pierderi": {
+          "name": "procent_pierderi",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "gestiune_descarcare": {
+          "name": "gestiune_descarcare",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "obligatoriu": {
+          "name": "obligatoriu",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "observatii": {
+          "name": "observatii",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "recipe_line_recipe_idx": {
+          "name": "recipe_line_recipe_idx",
+          "columns": [
+            {
+              "expression": "recipe_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "recipe_line_recipe_id_recipe_id_fk": {
+          "name": "recipe_line_recipe_id_recipe_id_fk",
+          "tableFrom": "recipe_line",
+          "tableTo": "recipe",
+          "columnsFrom": [
+            "recipe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "recipe_line_cod_saga_saga_article_cod_saga_fk": {
+          "name": "recipe_line_cod_saga_saga_article_cod_saga_fk",
+          "tableFrom": "recipe_line",
+          "tableTo": "saga_article",
+          "columnsFrom": [
+            "cod_saga"
+          ],
+          "columnsTo": [
+            "cod_saga"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "recipe_line_nr_unic": {
+          "name": "recipe_line_nr_unic",
+          "nullsNotDistinct": false,
+          "columns": [
+            "recipe_id",
+            "nr_linie"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "recipe_line_mod_valid": {
+          "name": "recipe_line_mod_valid",
+          "value": "\"recipe_line\".\"mod_calcul\" in ('fixa', 'formula', 'tabel')"
+        },
+        "recipe_line_nr_pozitiv": {
+          "name": "recipe_line_nr_pozitiv",
+          "value": "\"recipe_line\".\"nr_linie\" > 0"
+        },
+        "recipe_line_pierderi_valide": {
+          "name": "recipe_line_pierderi_valide",
+          "value": "\"recipe_line\".\"procent_pierderi\" >= 0 and \"recipe_line\".\"procent_pierderi\" < 100"
+        },
+        "recipe_line_variabil_coerent": {
+          "name": "recipe_line_variabil_coerent",
+          "value": "(\"recipe_line\".\"este_variabil\" = true and \"recipe_line\".\"cod_saga\" is null and \"recipe_line\".\"categorie_variabila\" is not null)\n          or (\"recipe_line\".\"este_variabil\" = false and \"recipe_line\".\"cod_saga\" is not null)"
+        },
+        "recipe_line_mod_coerent": {
+          "name": "recipe_line_mod_coerent",
+          "value": "(\"recipe_line\".\"mod_calcul\" = 'fixa' and \"recipe_line\".\"cantitate_fixa\" is not null)\n          or (\"recipe_line\".\"mod_calcul\" = 'formula' and \"recipe_line\".\"formula\" is not null and length(btrim(\"recipe_line\".\"formula\")) > 0)\n          or \"recipe_line\".\"mod_calcul\" = 'tabel'"
+        },
+        "recipe_line_cantitate_fixa_pozitiva": {
+          "name": "recipe_line_cantitate_fixa_pozitiva",
+          "value": "\"recipe_line\".\"cantitate_fixa\" is null or \"recipe_line\".\"cantitate_fixa\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.recipe_line_alternative": {
+      "name": "recipe_line_alternative",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "recipe_line_id": {
+          "name": "recipe_line_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod_saga": {
+          "name": "cod_saga",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prioritate": {
+          "name": "prioritate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "recipe_line_alternative_recipe_line_id_recipe_line_id_fk": {
+          "name": "recipe_line_alternative_recipe_line_id_recipe_line_id_fk",
+          "tableFrom": "recipe_line_alternative",
+          "tableTo": "recipe_line",
+          "columnsFrom": [
+            "recipe_line_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "recipe_line_alternative_cod_saga_saga_article_cod_saga_fk": {
+          "name": "recipe_line_alternative_cod_saga_saga_article_cod_saga_fk",
+          "tableFrom": "recipe_line_alternative",
+          "tableTo": "saga_article",
+          "columnsFrom": [
+            "cod_saga"
+          ],
+          "columnsTo": [
+            "cod_saga"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "recipe_line_alternative_unic": {
+          "name": "recipe_line_alternative_unic",
+          "nullsNotDistinct": false,
+          "columns": [
+            "recipe_line_id",
+            "cod_saga"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "recipe_line_alternative_prioritate_pozitiva": {
+          "name": "recipe_line_alternative_prioritate_pozitiva",
+          "value": "\"recipe_line_alternative\".\"prioritate\" > 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.recipe_line_dimension": {
+      "name": "recipe_line_dimension",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "recipe_line_id": {
+          "name": "recipe_line_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dimension_id": {
+          "name": "dimension_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantitate": {
+          "name": "cantitate",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "este_override": {
+          "name": "este_override",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "motiv": {
+          "name": "motiv",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "setat_de": {
+          "name": "setat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "setat_la": {
+          "name": "setat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "recipe_line_dimension_linie_idx": {
+          "name": "recipe_line_dimension_linie_idx",
+          "columns": [
+            {
+              "expression": "recipe_line_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "recipe_line_dimension_recipe_line_id_recipe_line_id_fk": {
+          "name": "recipe_line_dimension_recipe_line_id_recipe_line_id_fk",
+          "tableFrom": "recipe_line_dimension",
+          "tableTo": "recipe_line",
+          "columnsFrom": [
+            "recipe_line_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "recipe_line_dimension_dimension_id_dimension_id_fk": {
+          "name": "recipe_line_dimension_dimension_id_dimension_id_fk",
+          "tableFrom": "recipe_line_dimension",
+          "tableTo": "dimension",
+          "columnsFrom": [
+            "dimension_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "recipe_line_dimension_setat_de_profile_id_fk": {
+          "name": "recipe_line_dimension_setat_de_profile_id_fk",
+          "tableFrom": "recipe_line_dimension",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "setat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "recipe_line_dimension_unic": {
+          "name": "recipe_line_dimension_unic",
+          "nullsNotDistinct": false,
+          "columns": [
+            "recipe_line_id",
+            "dimension_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "recipe_line_dimension_cantitate_pozitiva": {
+          "name": "recipe_line_dimension_cantitate_pozitiva",
+          "value": "\"recipe_line_dimension\".\"cantitate\" >= 0"
+        },
+        "recipe_line_dimension_override_motivat": {
+          "name": "recipe_line_dimension_override_motivat",
+          "value": "\"recipe_line_dimension\".\"este_override\" = false\n          or (\"recipe_line_dimension\".\"motiv\" is not null and length(btrim(\"recipe_line_dimension\".\"motiv\")) > 0 and \"recipe_line_dimension\".\"setat_de\" is not null and \"recipe_line_dimension\".\"setat_la\" is not null)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.saga_article": {
+      "name": "saga_article",
+      "schema": "",
+      "columns": {
+        "cod_saga": {
+          "name": "cod_saga",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "denumire": {
+          "name": "denumire",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "um": {
+          "name": "um",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "um_normalizat": {
+          "name": "um_normalizat",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tip": {
+          "name": "tip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tip_saga": {
+          "name": "tip_saga",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cont": {
+          "name": "cont",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gestiune_implicita": {
+          "name": "gestiune_implicita",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "categorie": {
+          "name": "categorie",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pret_referinta": {
+          "name": "pret_referinta",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stoc": {
+          "name": "stoc",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pret_consum": {
+          "name": "pret_consum",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pret_consum_la": {
+          "name": "pret_consum_la",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "activ": {
+          "name": "activ",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "sincronizat_la": {
+          "name": "sincronizat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "saga_article_tip_idx": {
+          "name": "saga_article_tip_idx",
+          "columns": [
+            {
+              "expression": "tip",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "saga_article_denumire_idx": {
+          "name": "saga_article_denumire_idx",
+          "columns": [
+            {
+              "expression": "denumire",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "saga_article_tip_valid": {
+          "name": "saga_article_tip_valid",
+          "value": "\"saga_article\".\"tip\" in ('produs', 'materie_prima', 'marfa', 'altele')"
+        },
+        "saga_article_cod_nevid": {
+          "name": "saga_article_cod_nevid",
+          "value": "length(btrim(\"saga_article\".\"cod_saga\")) > 0"
+        },
+        "saga_article_pret_pozitiv": {
+          "name": "saga_article_pret_pozitiv",
+          "value": "\"saga_article\".\"pret_referinta\" is null or \"saga_article\".\"pret_referinta\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.saga_sync": {
+      "name": "saga_sync",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "rulat_la": {
+          "name": "rulat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "rulat_de": {
+          "name": "rulat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "articole_noi": {
+          "name": "articole_noi",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "articole_modificate": {
+          "name": "articole_modificate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "articole_disparute": {
+          "name": "articole_disparute",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "fisier_nume": {
+          "name": "fisier_nume",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "saga_sync_rulat_la_idx": {
+          "name": "saga_sync_rulat_la_idx",
+          "columns": [
+            {
+              "expression": "rulat_la",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "saga_sync_rulat_de_profile_id_fk": {
+          "name": "saga_sync_rulat_de_profile_id_fk",
+          "tableFrom": "saga_sync",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "rulat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.unmapped_material": {
+      "name": "unmapped_material",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "denumire_externa": {
+          "name": "denumire_externa",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sugestie_cod_saga": {
+          "name": "sugestie_cod_saga",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sugestii": {
+          "name": "sugestii",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rezolvat": {
+          "name": "rezolvat",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "rezolvat_de": {
+          "name": "rezolvat_de",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rezolvat_la": {
+          "name": "rezolvat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creat_la": {
+          "name": "creat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "unmapped_material_sugestie_cod_saga_saga_article_cod_saga_fk": {
+          "name": "unmapped_material_sugestie_cod_saga_saga_article_cod_saga_fk",
+          "tableFrom": "unmapped_material",
+          "tableTo": "saga_article",
+          "columnsFrom": [
+            "sugestie_cod_saga"
+          ],
+          "columnsTo": [
+            "cod_saga"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "unmapped_material_rezolvat_de_profile_id_fk": {
+          "name": "unmapped_material_rezolvat_de_profile_id_fk",
+          "tableFrom": "unmapped_material",
+          "tableTo": "profile",
+          "columnsFrom": [
+            "rezolvat_de"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "unmapped_material_denumire_unic": {
+          "name": "unmapped_material_denumire_unic",
+          "nullsNotDistinct": false,
+          "columns": [
+            "denumire_externa"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "unmapped_material_rezolvat_coerent": {
+          "name": "unmapped_material_rezolvat_coerent",
+          "value": "(\"unmapped_material\".\"rezolvat\" = false and \"unmapped_material\".\"rezolvat_la\" is null) or (\"unmapped_material\".\"rezolvat\" = true and \"unmapped_material\".\"rezolvat_la\" is not null)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.unmapped_material_ocurenta": {
+      "name": "unmapped_material_ocurenta",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "unmapped_material_id": {
+          "name": "unmapped_material_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipe_id": {
+          "name": "recipe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nr_linie": {
+          "name": "nr_linie",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grup": {
+          "name": "grup",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "um": {
+          "name": "um",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantitate": {
+          "name": "cantitate",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aplicat": {
+          "name": "aplicat",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "creat_la": {
+          "name": "creat_la",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "unmapped_ocurenta_material_idx": {
+          "name": "unmapped_ocurenta_material_idx",
+          "columns": [
+            {
+              "expression": "unmapped_material_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "unmapped_material_ocurenta_unmapped_material_id_unmapped_material_id_fk": {
+          "name": "unmapped_material_ocurenta_unmapped_material_id_unmapped_material_id_fk",
+          "tableFrom": "unmapped_material_ocurenta",
+          "tableTo": "unmapped_material",
+          "columnsFrom": [
+            "unmapped_material_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "unmapped_material_ocurenta_recipe_id_recipe_id_fk": {
+          "name": "unmapped_material_ocurenta_recipe_id_recipe_id_fk",
+          "tableFrom": "unmapped_material_ocurenta",
+          "tableTo": "recipe",
+          "columnsFrom": [
+            "recipe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "unmapped_ocurenta_unic": {
+          "name": "unmapped_ocurenta_unic",
+          "nullsNotDistinct": false,
+          "columns": [
+            "recipe_id",
+            "nr_linie"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
