@@ -311,6 +311,45 @@ describe.skipIf(!areBazaDeDate)('modele, dimensiuni și rețetar', () => {
     await app.close()
   })
 
+  it('respinge o linie cu articol fără unitate de măsură', async () => {
+    const app = await buildApp()
+    const modelId = await creeazaModel(app, 'umlipsa')
+    const reteta = (
+      await app.inject({
+        method: 'GET',
+        url: `/modele/${modelId}/reteta`,
+        headers: antet('tehnolog'),
+      })
+    ).json() as { id: string; lockVersion: number }
+
+    // 00000662 CUIE există în nomenclator, dar are UM gol. SAGA respinge linia
+    // la import și spune doar că articolul e greșit, nu de ce.
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/retete/${reteta.id}`,
+      headers: antet('tehnolog'),
+      payload: {
+        lockVersion: reteta.lockVersion,
+        linii: [
+          {
+            nrLinie: 1,
+            grup: 'ACCESORII',
+            codSaga: '00000662',
+            esteVariabil: false,
+            um: 'MIIB',
+            modCalcul: 'fixa',
+            cantitateFixa: '0.05',
+            procentPierderi: '0',
+            valoriPeDimensiuni: [],
+          },
+        ],
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    expect((res.json() as { mesaj: string }).mesaj).toMatch(/unitate de măsură/i)
+    await app.close()
+  })
+
   it('un operator nu poate modifica rețeta', async () => {
     const app = await buildApp()
     const modelId = await creeazaModel(app, 'rol')

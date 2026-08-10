@@ -13,7 +13,8 @@
     "bootstrap-admin": "tsx --env-file=.env scripts/bootstrap-admin.ts",
     "link-activare": "tsx --env-file=.env scripts/link-activare.ts",
     "import-nomenclator": "tsx --env-file=.env scripts/import-nomenclator.ts",
-    "incarca-fise": "tsx --env-file=.env scripts/incarca-fise.ts"
+    "incarca-fise": "tsx --env-file=.env scripts/incarca-fise.ts",
+    "raport-um-lipsa": "tsx --env-file=.env scripts/raport-um-lipsa.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

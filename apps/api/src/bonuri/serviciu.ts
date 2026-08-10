@@ -168,6 +168,17 @@ export async function calculeazaCuDenumiri(intrare: {
     )
   }
 
+  // SAGA refuses an import line whose article has no unit, and says only that
+  // the article is bad. Catching it here names the article and the reason.
+  const faraUm = [...dupaCod.values()].filter((a) => a.um.trim() === '')
+  if (faraUm.length > 0) {
+    throw new CerereInvalida(
+      `Articole fără unitate de măsură în SAGA: ${faraUm
+        .map((a) => `${a.codSaga} ${a.denumire}`)
+        .join('; ')}. SAGA ar respinge liniile. Completează UM în SAGA sau folosește alt cod.`,
+    )
+  }
+
   const linii: ConsumCuDenumire[] = rezultat.linii.map((linie) => {
     const articol = dupaCod.get(linie.codSaga)
     return {

@@ -21,6 +21,11 @@ const schemaListare = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v !== 'false'),
+  /** Hides articles SAGA would refuse on import — used by the material picker. */
+  doarUtilizabile: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
   pagina: z.coerce.number().int().min(1).default(1),
   pePagina: z.coerce.number().int().min(1).max(200).default(50),
 })
@@ -85,6 +90,7 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
 
     const conditii: SQL[] = []
     if (filtre.doarActive) conditii.push(eq(sagaArticle.activ, true))
+    if (filtre.doarUtilizabile) conditii.push(sql`btrim(${sagaArticle.um}) <> ''`)
     if (filtre.tip !== undefined) conditii.push(eq(sagaArticle.tip, filtre.tip))
     if (filtre.categorie !== undefined && filtre.categorie !== '') {
       conditii.push(eq(sagaArticle.categorie, filtre.categorie))
@@ -158,7 +164,14 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
     const catalog = await db
       .select({ codSaga: sagaArticle.codSaga, denumire: sagaArticle.denumire })
       .from(sagaArticle)
-      .where(and(eq(sagaArticle.activ, true), eq(sagaArticle.tip, 'materie_prima')))
+      .where(
+        and(
+          eq(sagaArticle.activ, true),
+          eq(sagaArticle.tip, 'materie_prima'),
+          // An article with no unit cannot be the answer: SAGA would refuse it.
+          sql`btrim(${sagaArticle.um}) <> ''`,
+        ),
+      )
 
     return randuri.map((rand) => ({
       id: rand.id,

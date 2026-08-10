@@ -357,7 +357,14 @@ function CautaArticol({
       // the SAGA export, so every article has a null category and the filter
       // would return nothing at all. The category stays a hint in the
       // placeholder until somebody fills those in.
-      const parametri = new URLSearchParams({ cauta: amanat, tip: 'materie_prima', pePagina: '10' })
+      const parametri = new URLSearchParams({
+        cauta: amanat,
+        tip: 'materie_prima',
+        // Articles without a unit exist in the catalogue and SAGA refuses them
+        // on import, so they are not offered here at all.
+        doarUtilizabile: 'true',
+        pePagina: '10',
+      })
       return apel<{ articole: Articol[] }>(`/nomenclator?${parametri.toString()}`)
     },
     enabled: amanat.trim().length >= 2 && valoare === '',

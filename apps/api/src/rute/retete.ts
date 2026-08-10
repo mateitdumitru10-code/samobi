@@ -161,7 +161,11 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
     const coduri = linii.map((l) => l.codSaga).filter((c): c is string => c !== null)
     if (coduri.length > 0) {
       const gasite = await db
-        .select({ codSaga: sagaArticle.codSaga })
+        .select({
+          codSaga: sagaArticle.codSaga,
+          denumire: sagaArticle.denumire,
+          um: sagaArticle.um,
+        })
         .from(sagaArticle)
         .where(inArray(sagaArticle.codSaga, coduri))
       const cunoscute = new Set(gasite.map((g) => g.codSaga))
@@ -169,6 +173,17 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
       if (lipsa.length > 0) {
         throw new CerereInvalida(
           `Coduri care nu există în nomenclator: ${lipsa.join(', ')}. Importă nomenclatorul întâi.`,
+        )
+      }
+
+      // Refused here rather than at export time: a recipe line pointing at an
+      // article with no unit is a bon SAGA will reject, discovered weeks later.
+      const faraUm = gasite.filter((g) => g.um.trim() === '')
+      if (faraUm.length > 0) {
+        throw new CerereInvalida(
+          `Articole fără unitate de măsură în SAGA: ${faraUm
+            .map((a) => `${a.codSaga} ${a.denumire}`)
+            .join('; ')}. Alege alt cod sau completează UM în SAGA.`,
         )
       }
     }
