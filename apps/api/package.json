@@ -23,7 +23,9 @@
     "raport-remapare": "tsx --env-file=.env scripts/raport-remapare.ts",
     "remapare-evidente": "tsx --env-file=.env scripts/remapare-evidente.ts",
     "propune-formule": "tsx --env-file=.env scripts/propune-formule.ts",
-    "aplica-formule": "tsx --env-file=.env scripts/aplica-formule.ts"
+    "aplica-formule": "tsx --env-file=.env scripts/aplica-formule.ts",
+    "raport-dimensiuni": "tsx --env-file=.env scripts/raport-dimensiuni.ts",
+    "aplica-dimensiuni": "tsx --env-file=.env scripts/aplica-dimensiuni.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
