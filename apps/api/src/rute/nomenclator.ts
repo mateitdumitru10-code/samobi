@@ -1,9 +1,18 @@
-import { sagaArticle, sagaSync, unmappedMaterial } from '@samobi/shared/db'
+import {
+  model,
+  recipe,
+  recipeLine,
+  sagaArticle,
+  sagaSync,
+  unmappedMaterial,
+  unmappedMaterialOcurenta,
+} from '@samobi/shared/db'
 import { sugereaza } from '@samobi/shared/nomenclator'
 import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
+import { scrieAudit } from '../audit.js'
 import { autentifica, ceruRol, utilizatorul, type VerificatorToken } from '../auth.js'
 import { db } from '../db.js'
 import { CerereInvalida, NuExista } from '../erori.js'
@@ -161,6 +170,29 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
 
     if (randuri.length === 0) return []
 
+    const ocurente = await db
+      .select({
+        unmappedMaterialId: unmappedMaterialOcurenta.unmappedMaterialId,
+        nrLinie: unmappedMaterialOcurenta.nrLinie,
+        um: unmappedMaterialOcurenta.um,
+        cantitate: unmappedMaterialOcurenta.cantitate,
+        grup: unmappedMaterialOcurenta.grup,
+        modelCod: model.cod,
+        modelDenumire: model.denumire,
+      })
+      .from(unmappedMaterialOcurenta)
+      .innerJoin(recipe, eq(recipe.id, unmappedMaterialOcurenta.recipeId))
+      .innerJoin(model, eq(model.id, recipe.modelId))
+      .where(eq(unmappedMaterialOcurenta.aplicat, false))
+      .orderBy(asc(model.cod), asc(unmappedMaterialOcurenta.nrLinie))
+
+    const dupaMaterial = new Map<string, typeof ocurente>()
+    for (const o of ocurente) {
+      const grup = dupaMaterial.get(o.unmappedMaterialId)
+      if (grup === undefined) dupaMaterial.set(o.unmappedMaterialId, [o])
+      else grup.push(o)
+    }
+
     const catalog = await db
       .select({ codSaga: sagaArticle.codSaga, denumire: sagaArticle.denumire })
       .from(sagaArticle)
@@ -178,34 +210,121 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
       denumireExterna: rand.denumireExterna,
       sugestieCodSaga: rand.sugestieCodSaga,
       creatLa: rand.creatLa.toISOString(),
+      // Where it appears, so the tehnolog sees what a decision will complete.
+      ocurente: (dupaMaterial.get(rand.id) ?? []).map((o) => ({
+        modelCod: o.modelCod,
+        modelDenumire: o.modelDenumire,
+        nrLinie: o.nrLinie,
+        um: o.um,
+        cantitate: o.cantitate,
+        grup: o.grup,
+      })),
       sugestii: sugereaza(rand.denumireExterna, catalog),
     }))
   })
 
+  /**
+   * Resolving a material completes every recipe that was waiting on it.
+   *
+   * The decision is a mapping from a name on a paper sheet to a SAGA article, and
+   * the same name sits on a dozen sheets. Recording the mapping without creating
+   * the lines would leave the recipes exactly as incomplete as before.
+   */
   app.post('/nomenclator/nemapate/:id/rezolvare', doarTehnolog, async (cerere) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(cerere.params)
     const { codSaga } = schemaRezolvare.parse(cerere.body)
     const utilizator = utilizatorul(cerere)
 
     const [articol] = await db
-      .select({ codSaga: sagaArticle.codSaga })
+      .select({ codSaga: sagaArticle.codSaga, um: sagaArticle.um })
       .from(sagaArticle)
       .where(eq(sagaArticle.codSaga, codSaga))
       .limit(1)
     if (articol === undefined) throw new NuExista('Articolul ales nu există în nomenclator.')
 
-    const [actualizat] = await db
-      .update(unmappedMaterial)
-      .set({
-        sugestieCodSaga: codSaga,
-        rezolvat: true,
-        rezolvatDe: utilizator.id,
-        rezolvatLa: new Date(),
-      })
-      .where(eq(unmappedMaterial.id, id))
-      .returning()
+    const rezultat = await db.transaction(async (tx) => {
+      const [material] = await tx
+        .select()
+        .from(unmappedMaterial)
+        .where(eq(unmappedMaterial.id, id))
+        .limit(1)
+      if (material === undefined) throw new NuExista('Intrarea nu există.')
 
-    if (actualizat === undefined) throw new NuExista('Intrarea nu există.')
-    return actualizat
+      const ocurente = await tx
+        .select()
+        .from(unmappedMaterialOcurenta)
+        .where(
+          and(
+            eq(unmappedMaterialOcurenta.unmappedMaterialId, id),
+            eq(unmappedMaterialOcurenta.aplicat, false),
+          ),
+        )
+
+      const retete: string[] = []
+      let sarite = 0
+
+      for (const o of ocurente) {
+        const [reteta] = await tx.select().from(recipe).where(eq(recipe.id, o.recipeId)).limit(1)
+        // An active recipe is immutable; completing it would change what a bon
+        // already issued against it means.
+        if (reteta === undefined || reteta.status !== 'draft') {
+          sarite += 1
+          continue
+        }
+
+        await tx
+          .insert(recipeLine)
+          .values({
+            recipeId: o.recipeId,
+            nrLinie: o.nrLinie,
+            grup: o.grup,
+            codSaga,
+            esteVariabil: false,
+            // The sheet's unit, as everywhere else: SAGA's own may be blank.
+            um: o.um,
+            modCalcul: 'fixa',
+            cantitateFixa: o.cantitate,
+            procentPierderi: '0',
+            observatii: `mapat din „${material.denumireExterna}", poziția ${o.nrLinie}`,
+          })
+          .onConflictDoNothing()
+
+        await tx
+          .update(unmappedMaterialOcurenta)
+          .set({ aplicat: true })
+          .where(eq(unmappedMaterialOcurenta.id, o.id))
+
+        if (!retete.includes(o.recipeId)) retete.push(o.recipeId)
+      }
+
+      for (const retetaId of retete) {
+        await tx
+          .update(recipe)
+          .set({ lockVersion: sql`${recipe.lockVersion} + 1` })
+          .where(eq(recipe.id, retetaId))
+      }
+
+      await tx
+        .update(unmappedMaterial)
+        .set({
+          sugestieCodSaga: codSaga,
+          rezolvat: true,
+          rezolvatDe: utilizator.id,
+          rezolvatLa: new Date(),
+        })
+        .where(eq(unmappedMaterial.id, id))
+
+      return { denumire: material.denumireExterna, linii: ocurente.length - sarite, sarite }
+    })
+
+    await scrieAudit(cerere, {
+      userId: utilizator.id,
+      entitate: 'unmapped_material',
+      entitateId: id,
+      actiune: 'modificare',
+      diff: { codSaga, ...rezultat },
+    })
+
+    return rezultat
   })
 }

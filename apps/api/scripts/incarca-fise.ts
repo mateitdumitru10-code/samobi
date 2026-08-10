@@ -6,6 +6,7 @@ import {
   recipeLine,
   sagaArticle,
   unmappedMaterial,
+  unmappedMaterialOcurenta,
 } from '@samobi/shared/db'
 import { potrivireSigura, sugereaza, type Candidat } from '@samobi/shared/nomenclator'
 import { asc, eq } from 'drizzle-orm'
@@ -202,6 +203,9 @@ async function incarca(fisa: Fisa) {
 
     await db.delete(recipeLine).where(eq(recipeLine.recipeId, retetaId))
     await db
+      .delete(unmappedMaterialOcurenta)
+      .where(eq(unmappedMaterialOcurenta.recipeId, retetaId))
+    await db
       .update(recipe)
       .set({ lockVersion: retetaExistenta.lockVersion + 1 })
       .where(eq(recipe.id, retetaId))
@@ -253,12 +257,38 @@ async function incarca(fisa: Fisa) {
     })
   }
 
+  // The queue records the name once and every place it appears. Resolving the
+  // name then completes each recipe that was waiting on it, instead of noting a
+  // decision that changes nothing.
   for (const p of nepotrivite) {
-    await db
+    const [material] = await db
       .insert(unmappedMaterial)
       .values({
         denumireExterna: p.linie.denumire,
         sugestieCodSaga: p.alternative[0]?.codSaga ?? null,
+        sugestii: p.alternative.map((a) => ({
+          codSaga: a.codSaga,
+          denumire: a.denumire,
+          scor: Math.round(a.scor * 100),
+        })),
+      })
+      .onConflictDoUpdate({
+        target: unmappedMaterial.denumireExterna,
+        set: { sugestieCodSaga: p.alternative[0]?.codSaga ?? null },
+      })
+      .returning({ id: unmappedMaterial.id })
+
+    if (material === undefined) continue
+
+    await db
+      .insert(unmappedMaterialOcurenta)
+      .values({
+        unmappedMaterialId: material.id,
+        recipeId: retetaId,
+        nrLinie: p.linie.nr,
+        grup: p.linie.grup,
+        um: p.linie.um,
+        cantitate: p.linie.cantitate,
       })
       .onConflictDoNothing()
   }

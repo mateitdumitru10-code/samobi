@@ -146,6 +146,13 @@ export const unmappedMaterial = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     denumireExterna: text('denumire_externa').notNull(),
     sugestieCodSaga: text('sugestie_cod_saga').references(() => sagaArticle.codSaga),
+    /**
+     * Candidates worked out when the material was queued, with the evidence
+     * behind them: how often the article appears in that product's bons and how
+     * much of it goes into one unit. Stored rather than recomputed, so the
+     * screen does not have to re-read a 200.000-line production export.
+     */
+    sugestii: jsonb('sugestii'),
     rezolvat: boolean('rezolvat').notNull().default(false),
     rezolvatDe: uuid('rezolvat_de').references(() => profile.id),
     rezolvatLa: timestamp('rezolvat_la', { withTimezone: true }),
@@ -157,6 +164,38 @@ export const unmappedMaterial = pgTable(
       'unmapped_material_rezolvat_coerent',
       sql`(${t.rezolvat} = false and ${t.rezolvatLa} is null) or (${t.rezolvat} = true and ${t.rezolvatLa} is not null)`,
     ),
+  ],
+).enableRLS()
+
+/**
+ * Where an unmapped material actually appears.
+ *
+ * A name like HSURUB 4/25 shows up on a dozen sheets, each with its own line
+ * number, unit and quantity. Without these rows, resolving the name records a
+ * decision and changes nothing — the recipe line still is not there. With them,
+ * one decision completes every recipe that was waiting on it.
+ */
+export const unmappedMaterialOcurenta = pgTable(
+  'unmapped_material_ocurenta',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    unmappedMaterialId: uuid('unmapped_material_id')
+      .notNull()
+      .references(() => unmappedMaterial.id, { onDelete: 'cascade' }),
+    recipeId: uuid('recipe_id')
+      .notNull()
+      .references(() => recipe.id, { onDelete: 'cascade' }),
+    nrLinie: integer('nr_linie').notNull(),
+    grup: text('grup').notNull(),
+    um: text('um').notNull(),
+    cantitate: cantitate('cantitate').notNull(),
+    /** True once the recipe line has been created from this occurrence. */
+    aplicat: boolean('aplicat').notNull().default(false),
+    creatLa: creatLa(),
+  },
+  (t) => [
+    unique('unmapped_ocurenta_unic').on(t.recipeId, t.nrLinie),
+    index('unmapped_ocurenta_material_idx').on(t.unmappedMaterialId),
   ],
 ).enableRLS()
 

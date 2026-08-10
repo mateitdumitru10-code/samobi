@@ -38,9 +38,19 @@ interface Raport {
   umNecunoscute: { um: string; articole: number }[]
 }
 
+interface Ocurenta {
+  modelCod: string
+  modelDenumire: string
+  nrLinie: number
+  um: string
+  cantitate: string
+  grup: string
+}
+
 interface Nemapat {
   id: string
   denumireExterna: string
+  ocurente: Ocurenta[]
   sugestii: { codSaga: string; denumire: string; scor: number }[]
 }
 
@@ -111,8 +121,16 @@ export function Nomenclator({ utilizator }: { utilizator: UtilizatorCurent }) {
 
   const rezolva = useMutation({
     mutationFn: (v: { id: string; codSaga: string }) =>
-      apel(`/nomenclator/nemapate/${v.id}/rezolvare`, { metoda: 'POST', corp: { codSaga: v.codSaga } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['nomenclator', 'nemapate'] }),
+      apel<{ denumire: string; linii: number; sarite: number }>(
+        `/nomenclator/nemapate/${v.id}/rezolvare`,
+        { metoda: 'POST', corp: { codSaga: v.codSaga } },
+      ),
+    onSuccess: async () => {
+      // The recipes changed too, not just the queue.
+      await queryClient.invalidateQueries({ queryKey: ['nomenclator', 'nemapate'] })
+      await queryClient.invalidateQueries({ queryKey: ['reteta'] })
+      await queryClient.invalidateQueries({ queryKey: ['modele'] })
+    },
   })
 
   function alegeFisier(eveniment: ChangeEvent<HTMLInputElement>) {
@@ -157,37 +175,35 @@ export function Nomenclator({ utilizator }: { utilizator: UtilizatorCurent }) {
 
       {(nemapate.data?.length ?? 0) > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
-          <h2 className="text-sm font-semibold text-amber-900">
-            Materiale fără corespondent ({nemapate.data?.length})
-          </h2>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold text-amber-900">
+              Materiale fără corespondent ({nemapate.data?.length})
+            </h2>
+            <span className="text-sm text-amber-800">
+              {nemapate.data?.reduce((s, n) => s + n.ocurente.length, 0)} linii de rețetă lipsesc
+              din cauza lor
+            </span>
+          </div>
           <p className="mt-1 text-sm text-amber-800">
-            Blochează exportul bonurilor care le folosesc. Alege articolul potrivit.
+            Alege articolul o dată; linia se adaugă în fiecare rețetă care îl aștepta.
           </p>
+
+          {rezolva.isSuccess && (
+            <p className="mt-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">
+              „{rezolva.data.denumire}" rezolvat: {rezolva.data.linii} linii adăugate
+              {rezolva.data.sarite > 0 && `, ${rezolva.data.sarite} sărite (rețetă activă)`}.
+            </p>
+          )}
 
           <ul className="mt-4 space-y-3">
             {nemapate.data?.map((intrare) => (
-              <li key={intrare.id} className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="font-medium text-neutral-900">{intrare.denumireExterna}</span>
-                <select
-                  defaultValue=""
-                  disabled={!poateImporta || rezolva.isPending}
-                  onChange={(e) =>
-                    e.target.value !== '' &&
-                    rezolva.mutate({ id: intrare.id, codSaga: e.target.value })
-                  }
-                  className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
-                >
-                  <option value="">Alege articolul…</option>
-                  {intrare.sugestii.map((s) => (
-                    <option key={s.codSaga} value={s.codSaga}>
-                      {s.codSaga} · {s.denumire} ({Math.round(s.scor * 100)}%)
-                    </option>
-                  ))}
-                </select>
-                {intrare.sugestii.length === 0 && (
-                  <span className="text-xs text-amber-700">nicio sugestie apropiată</span>
-                )}
-              </li>
+              <RandNemapat
+                key={intrare.id}
+                intrare={intrare}
+                poateEdita={poateImporta}
+                seLucreaza={rezolva.isPending}
+                onRezolva={(codSaga) => rezolva.mutate({ id: intrare.id, codSaga })}
+              />
             ))}
           </ul>
         </div>
@@ -400,5 +416,122 @@ function Cifra({ eticheta, valoare }: { eticheta: string; valoare: number }) {
         {valoare.toLocaleString('ro-RO')}
       </dd>
     </div>
+  )
+}
+
+
+/**
+ * One queued material: where it appears, what the matcher suggests, and a search
+ * across the catalogue for when neither is right.
+ */
+function RandNemapat({
+  intrare,
+  poateEdita,
+  seLucreaza,
+  onRezolva,
+}: {
+  intrare: Nemapat
+  poateEdita: boolean
+  seLucreaza: boolean
+  onRezolva: (codSaga: string) => void
+}) {
+  const [cauta, setCauta] = useState('')
+  const [amanat, setAmanat] = useState('')
+  const [deschis, setDeschis] = useState(false)
+
+  useEffect(() => {
+    const cronometru = setTimeout(() => setAmanat(cauta), 300)
+    return () => clearTimeout(cronometru)
+  }, [cauta])
+
+  const cautare = useQuery({
+    queryKey: ['cauta-nemapat', amanat],
+    queryFn: () =>
+      apel<Pagina>(
+        `/nomenclator?cauta=${encodeURIComponent(amanat)}&tip=materie_prima&pePagina=8`,
+      ),
+    enabled: amanat.trim().length >= 2,
+  })
+
+  const totalLinii = intrare.ocurente.length
+
+  return (
+    <li className="rounded-md border border-amber-200 bg-white p-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="font-medium text-neutral-900">{intrare.denumireExterna}</span>
+        <span className="text-xs text-neutral-500">
+          {totalLinii} {totalLinii === 1 ? 'rețetă' : 'rețete'}
+        </span>
+        <button
+          type="button"
+          onClick={() => setDeschis((d) => !d)}
+          className="text-xs text-blue-700 underline"
+        >
+          {deschis ? 'ascunde' : 'unde apare'}
+        </button>
+      </div>
+
+      {deschis && (
+        <ul className="mt-2 space-y-0.5 text-xs text-neutral-600">
+          {intrare.ocurente.map((o) => (
+            <li key={`${o.modelCod}-${o.nrLinie}`}>
+              {o.modelDenumire} · poziția {o.nrLinie} · {Number(o.cantitate)} {o.um} · {o.grup}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {intrare.sugestii.map((s) => (
+          <button
+            key={s.codSaga}
+            type="button"
+            disabled={!poateEdita || seLucreaza}
+            onClick={() => onRezolva(s.codSaga)}
+            title={`${Math.round(s.scor * 100)}% potrivire pe denumire`}
+            className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:border-neutral-900 disabled:opacity-40"
+          >
+            <span className="font-mono text-neutral-500">{s.codSaga}</span> {s.denumire}{' '}
+            <span className="text-neutral-400">{Math.round(s.scor * 100)}%</span>
+          </button>
+        ))}
+        {intrare.sugestii.length === 0 && (
+          <span className="text-xs text-amber-700">nicio sugestie apropiată — caută mai jos</span>
+        )}
+      </div>
+
+      <div className="relative mt-2">
+        <input
+          value={cauta}
+          onChange={(e) => setCauta(e.target.value)}
+          disabled={!poateEdita}
+          placeholder="caută alt articol…"
+          className="w-80 rounded-md border border-neutral-300 px-2 py-1 text-sm"
+        />
+        {(cautare.data?.articole.length ?? 0) > 0 && (
+          <ul className="absolute z-10 mt-1 max-h-56 w-96 overflow-y-auto rounded-md border border-neutral-200 bg-white shadow-lg">
+            {cautare.data?.articole.map((a) => (
+              <li key={a.codSaga}>
+                <button
+                  type="button"
+                  disabled={seLucreaza}
+                  onClick={() => {
+                    onRezolva(a.codSaga)
+                    setCauta('')
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                >
+                  <span className="font-mono text-xs text-neutral-500">{a.codSaga}</span>{' '}
+                  {a.denumire}{' '}
+                  <span className="text-xs text-neutral-400">
+                    ({a.um.trim() === '' ? 'fără UM' : a.um})
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </li>
   )
 }
