@@ -16,7 +16,8 @@
     "incarca-fise": "tsx --env-file=.env scripts/incarca-fise.ts",
     "raport-um-lipsa": "tsx --env-file=.env scripts/raport-um-lipsa.ts",
     "raport-nemapate": "tsx --env-file=.env scripts/raport-nemapate.ts",
-    "aplica-mapari": "tsx --env-file=.env scripts/aplica-mapari.ts"
+    "aplica-mapari": "tsx --env-file=.env scripts/aplica-mapari.ts",
+    "leaga-produse": "tsx --env-file=.env scripts/leaga-produse.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
