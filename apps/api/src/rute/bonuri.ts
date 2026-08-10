@@ -7,6 +7,7 @@ import {
   sagaArticle,
 } from '@samobi/shared/db'
 import { EroareCalcul } from '@samobi/shared/calcul'
+import { normalizeazaUm } from '@samobi/shared/nomenclator'
 import { schemaBonNou, schemaExport, schemaPrevizualizare } from '@samobi/shared/scheme'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
@@ -62,8 +63,8 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
   app.post('/bonuri/previzualizare', poateEmite, async (cerere) => {
     const date = schemaPrevizualizare.parse(cerere.body)
     try {
-      const { linii } = await calculeazaCuDenumiri(date)
-      return { linii }
+      const { linii, avertismenteUm } = await calculeazaCuDenumiri(date)
+      return { linii, avertismenteUm }
     } catch (err) {
       if (err instanceof EroareCalcul) throw new CerereInvalida(err.message)
       throw err
@@ -142,7 +143,9 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
       diff: { model: date.modelId, dimensiune: dim.cod, cantitate: date.cantitate },
     })
 
-    return raspuns.status(201).send({ ...bon, linii: calcul.linii })
+    return raspuns
+      .status(201)
+      .send({ ...bon, linii: calcul.linii, avertismenteUm: calcul.avertismenteUm })
   })
 
   app.get('/bonuri', oricine, async (cerere) => {
@@ -209,7 +212,7 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
    * carries a short-lived signed link, never the bytes.
    */
   app.post('/export', poateExporta, async (cerere) => {
-    const { bonIds, confirmaReexport } = schemaExport.parse(cerere.body)
+    const { bonIds, confirmaReexport, confirmaUmDiferita } = schemaExport.parse(cerere.body)
     const utilizator = utilizatorul(cerere)
 
     const bonuri = await db
@@ -236,12 +239,32 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
         um: productionOrderLine.um,
         cantitateBruta: productionOrderLine.cantitateBruta,
         denumire: sagaArticle.denumire,
+        umSaga: sagaArticle.um,
       })
       .from(productionOrderLine)
       .leftJoin(sagaArticle, eq(sagaArticle.codSaga, productionOrderLine.codSaga))
       .where(inArray(productionOrderLine.productionOrderId, bonIds))
 
     if (linii.length === 0) throw new CerereInvalida('Bonurile alese nu au linii de consum.')
+
+    // The last gate before accounting. A unit that differs by a factor of a
+    // thousand produces a booking that looks entirely plausible, so it is
+    // refused here rather than discovered in a stock count months later.
+    const umGresite = linii.filter((l) => {
+      const a = (normalizeazaUm(l.um) ?? '').toUpperCase()
+      const b = (normalizeazaUm(l.umSaga ?? '') ?? '').toUpperCase()
+      return a !== '' && b !== '' && a !== b
+    })
+
+    if (umGresite.length > 0 && !confirmaUmDiferita) {
+      const exemple = [...new Set(umGresite.map((l) => `${l.codSaga} ${l.denumire ?? ''} (bon ${l.um} / SAGA ${l.umSaga})`))]
+      throw new Conflict(
+        `${umGresite.length} linii au altă unitate de măsură decât articolul din SAGA. ` +
+          `Importate așa, cantitățile se înregistrează greșit — la capse și piulițe, de 1000 ` +
+          `respectiv 100 de ori. Corectează UM în SAGA (vezi docs/um-de-corectat-in-saga.xlsx) ` +
+          `sau confirmă explicit. Exemple: ${exemple.slice(0, 5).join('; ')}`,
+      )
+    }
 
     // Aggregate across bons, then round once, at the end.
     const cumulat = new Map<string, { denumire: string; um: string; total: number }>()

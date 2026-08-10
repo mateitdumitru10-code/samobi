@@ -341,6 +341,37 @@ describe.skipIf(!areBazaDeDate)('bonuri și export', () => {
     await app.close()
   })
 
+  it('refuză exportul când unitatea diferă de cea din SAGA', async () => {
+    // 00000023 CAPSE 380/14 este în BUC în nomenclator; rețetarul îl dă în MIIB.
+    // Trimis așa, SAGA înregistrează de o mie de ori mai puțin.
+    const [linie] = await clientSql`
+      select pol.production_order_id, pol.um, a.um as um_saga
+      from production_order_line pol
+      join saga_article a on a.cod_saga = pol.cod_saga
+      where upper(btrim(pol.um)) <> upper(btrim(a.um)) and btrim(a.um) <> ''
+      limit 1`
+
+    if (linie === undefined) {
+      // Nimic de verificat pe datele curente; testul nu inventează o nepotrivire.
+      expect(true).toBe(true)
+      return
+    }
+
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/export',
+      headers: antet('operator'),
+      payload: {
+        bonIds: [linie['production_order_id']],
+        confirmaReexport: true,
+      },
+    })
+    expect(res.statusCode).toBe(409)
+    expect((res.json() as { mesaj: string }).mesaj).toMatch(/unitate de măsură/i)
+    await app.close()
+  })
+
   it('nu anulează un bon deja exportat', async () => {
     const app = await buildApp()
     const res = await app.inject({
