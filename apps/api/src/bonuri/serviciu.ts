@@ -185,6 +185,44 @@ export async function incarcaPentruCalcul(modelId: string, cerere: CerereDimensi
   }
 }
 
+/**
+ * The recipe, every registered size, and the article names — without picking a
+ * size first. What a comparison across sizes needs and a bon does not.
+ */
+export async function incarcaPentruComparatie(modelId: string) {
+  const dimensiuni = await db
+    .select()
+    .from(dimension)
+    .where(and(eq(dimension.modelId, modelId), eq(dimension.activ, true)))
+    .orderBy(asc(dimension.cod))
+
+  const primaDimensiune = dimensiuni[0]
+  const context = await incarcaPentruCalcul(
+    modelId,
+    primaDimensiune === undefined
+      ? { lungime: '1000', latime: '1000', inaltime: null }
+      : { dimensiuneId: primaDimensiune.id },
+  )
+
+  const coduri = context.reteta.linii
+    .map((l) => l.codSaga)
+    .filter((c): c is string => c !== null && c !== '')
+
+  const articole =
+    coduri.length === 0
+      ? []
+      : await db
+          .select({ codSaga: sagaArticle.codSaga, denumire: sagaArticle.denumire })
+          .from(sagaArticle)
+          .where(inArray(sagaArticle.codSaga, [...new Set(coduri)]))
+
+  return {
+    reteta: context.reteta,
+    dimensiuni,
+    denumiri: new Map(articole.map((a) => [a.codSaga, a.denumire])),
+  }
+}
+
 export interface ConsumCuDenumire {
   codSaga: string
   denumire: string

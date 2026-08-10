@@ -7,7 +7,12 @@ import {
   recipeLineDimension,
   sagaArticle,
 } from '@samobi/shared/db'
-import { EroareCalcul, valideazaFormulaPeInterval } from '@samobi/shared/calcul'
+import {
+  cantitatiPeLinie,
+  EroareCalcul,
+  valideazaFormulaPeInterval,
+  type DimensiuneCeruta,
+} from '@samobi/shared/calcul'
 import {
   schemaDimensiune,
   schemaDimensiuneBaza,
@@ -22,6 +27,7 @@ import { z } from 'zod'
 
 import { scrieAudit } from '../audit.js'
 import { autentifica, ceruRol, utilizatorul, type VerificatorToken } from '../auth.js'
+import { incarcaPentruComparatie } from '../bonuri/serviciu.js'
 import { db } from '../db.js'
 import { CerereInvalida, codPostgres, Conflict, NuExista } from '../erori.js'
 
@@ -334,6 +340,75 @@ export function ruteModele(app: FastifyInstance, verifica: VerificatorToken) {
     })
 
     return { ...actualizat, avertismente: await verificaFormulele(id, date) }
+  })
+
+  /**
+   * The recipe's quantities side by side, at every size the model is built in.
+   *
+   * This is where „ce se schimbă când se schimbă dimensiunea" gets an answer.
+   * A line that is the same number in every column is either genuinely
+   * size-independent — four legs are four legs — or a constant nobody has
+   * turned into a formula yet, and seeing the two next to each other is how the
+   * difference becomes obvious.
+   */
+  app.get('/modele/:id/comparatie', oricine, async (cerere) => {
+    const { id } = schemaId.parse(cerere.params)
+    const proba = z
+      .object({
+        lungime: z.coerce.number().int().positive().optional(),
+        latime: z.coerce.number().int().positive().optional(),
+        inaltime: z.coerce.number().int().positive().optional(),
+      })
+      .parse(cerere.query)
+
+    const context = await incarcaPentruComparatie(id)
+
+    const coloane: { cod: string; laComanda: boolean }[] = context.dimensiuni.map((d) => ({
+      cod: d.cod,
+      laComanda: false,
+    }))
+
+    const dimensiuni: DimensiuneCeruta[] = context.dimensiuni.map((d) => ({
+      id: d.id,
+      cod: d.cod,
+      lungime: d.lungime,
+      latime: d.latime,
+      inaltime: d.inaltime,
+    }))
+
+    // A trial size, so a formula can be pushed past the registered sizes before
+    // anybody is asked to build one.
+    if (proba.lungime !== undefined && proba.latime !== undefined) {
+      const cod = `${proba.lungime}×${proba.latime}${
+        proba.inaltime === undefined ? '' : `×${proba.inaltime}`
+      }`
+      coloane.push({ cod, laComanda: true })
+      dimensiuni.push({
+        id: null,
+        cod,
+        lungime: String(proba.lungime),
+        latime: String(proba.latime),
+        inaltime: proba.inaltime === undefined ? null : String(proba.inaltime),
+      })
+    }
+
+    const peDimensiune = dimensiuni.map((d) => cantitatiPeLinie(context.reteta, d))
+
+    const linii = context.reteta.linii.map((linie, index) => ({
+      linieId: linie.id,
+      nrLinie: linie.nrLinie,
+      grup: linie.grup,
+      um: linie.um,
+      modCalcul: linie.modCalcul,
+      formula: linie.formula,
+      denumire: context.denumiri.get(linie.codSaga ?? '') ?? linie.categorieVariabila,
+      valori: peDimensiune.map((coloana) => {
+        const c = coloana[index]
+        return { cantitate: c?.cantitate ?? null, motiv: c?.motiv ?? null }
+      }),
+    }))
+
+    return { coloane, linii }
   })
 
   app.post('/modele/:id/dimensiuni', doarTehnolog, async (cerere, raspuns) => {

@@ -12,4 +12,9 @@ export {
   type ScopFormula,
   type VariabilaPermisa,
 } from './formula.js'
-export { calculeazaConsumuri, ZECIMALE_EXPORT } from './calculeaza.js'
+export {
+  calculeazaConsumuri,
+  cantitatiPeLinie,
+  ZECIMALE_EXPORT,
+  type CantitateLinie,
+} from './calculeaza.js'

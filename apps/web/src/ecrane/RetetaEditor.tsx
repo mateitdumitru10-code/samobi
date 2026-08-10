@@ -10,6 +10,7 @@ import { useNotificari } from '../ui/Notificari.js'
 import { cant, lei } from '../ui/numere.js'
 import { BannerEroare, Insigna, Schelet, mesajEroare } from '../ui/stari.js'
 
+import { ComparatieDimensiuni } from './ComparatieDimensiuni.js'
 import { Versiuni } from './Versiuni.js'
 
 interface Dimensiune {
@@ -1015,6 +1016,8 @@ export function RetetaEditor({
       )}
 
       <TotalReteta linii={linii} dimensiuni={dimensiuni} dimensiuneId={dimensiunePreview} />
+
+      <ComparatieDimensiuni modelId={modelId} />
 
       {overrideuri.length > 0 && (
         <div

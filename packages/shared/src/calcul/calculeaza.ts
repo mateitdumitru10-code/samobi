@@ -20,6 +20,7 @@ import type {
   ConsumLine,
   Contributie,
   DimensiuneCeruta,
+  Reteta,
   IntervalDimensiuni,
   IntrareCalcul,
   LinieReteta,
@@ -187,6 +188,51 @@ function rezolvaCodSaga(linie: LinieReteta, alegeri: ReadonlyMap<string, string>
     throw new EroareMaterialNerezolvat(linie.nrLinie, linie.categorieVariabila)
   }
   return ales
+}
+
+export interface CantitateLinie {
+  linieId: string
+  nrLinie: number
+  /** null when the line cannot be computed at this size; `motiv` says why */
+  cantitate: string | null
+  sursa: SursaCantitate | null
+  motiv: string | null
+}
+
+/**
+ * What each line contributes at one size, line by line and failure by failure.
+ *
+ * Deliberately not the bon calculation: it resolves no articles, aggregates
+ * nothing, and one line that cannot be computed does not stop the others. That
+ * is what makes it usable for the question the tehnolog actually asks — *how do
+ * the quantities move when the size changes* — where a recipe half-finished, or
+ * one whose fabric comes from a table, still has plenty to show.
+ */
+export function cantitatiPeLinie(
+  reteta: Reteta,
+  dimensiune: DimensiuneCeruta,
+  valoriManuale: ReadonlyMap<string, string> = new Map(),
+): CantitateLinie[] {
+  return reteta.linii.map((linie) => {
+    try {
+      const { neta, sursa } = cantitateNetaUnitara(linie, dimensiune, valoriManuale)
+      return {
+        linieId: linie.id,
+        nrLinie: linie.nrLinie,
+        cantitate: catreString(neta),
+        sursa,
+        motiv: null,
+      }
+    } catch (err) {
+      return {
+        linieId: linie.id,
+        nrLinie: linie.nrLinie,
+        cantitate: null,
+        sursa: null,
+        motiv: err instanceof Error ? err.message : 'nu se poate calcula',
+      }
+    }
+  })
 }
 
 /**
