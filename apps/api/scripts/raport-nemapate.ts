@@ -22,9 +22,20 @@ import { FISE } from './fise.js'
 interface Consum {
   denumire: string
   um: string
-  bonuri: Set<string>
-  perUnitate: number[]
+  /** One entry per bon: when it was issued and how much went into one unit. */
+  observatii: { zi: number; perUnitate: number; bon: string }[]
 }
+
+/**
+ * How many of a product's most recent bons count as evidence.
+ *
+ * Recipes drift. Over 2025-2026 CANAPEA MARIA moved from 2 to 3 kg of fibre mix
+ * and from 4 rollers to 2, and a median across the whole period lands between
+ * the two and matches neither. The sheet describes the recipe as it is now, so
+ * the recent bons are what it should be compared against — and the older ones
+ * become evidence of something else: that the recipe changed.
+ */
+const BONURI_RECENTE = 15
 
 const DOSAR = resolve(import.meta.dirname, '..', '..', '..', 'docs')
 
@@ -42,24 +53,41 @@ function gasesteIstoric(): string | null {
 
 const istoric = new Map<string, Map<string, Consum>>()
 const bonuriPerProdus = new Map<string, number>()
+/** Oldest day still counted as recent, per product. */
+const pragRecent = new Map<string, number>()
 
 const numeIstoric = gasesteIstoric()
 if (numeIstoric !== null) {
   const foaie = citesteXlsx(readFileSync(resolve(DOSAR, numeIstoric)))
   const antet = foaie.randuri[0] ?? []
   const c = (nume: string) => antet.indexOf(nume)
-  const [iNr, iId, iProd, iCant, iMat, iDenMat, iUmMat, iCantMat] = [
-    c('nr'), c('id_unic'), c('cod'), c('cantitate'), c('cod1'), c('denumire1'), c('um1'), c('cantitate1'),
+  const [iNr, iId, iProd, iCant, iMat, iDenMat, iUmMat, iCantMat, iZi] = [
+    c('nr'), c('id_unic'), c('cod'), c('cantitate'), c('cod1'), c('denumire1'), c('um1'),
+    c('cantitate1'), c('data'),
   ]
 
-  const cantitateBon = new Map<string, { produs: string; cant: number }>()
+  const cantitateBon = new Map<string, { produs: string; cant: number; zi: number }>()
   for (const r of foaie.randuri.slice(1)) {
     const cheie = `${r[iNr] ?? ''}#${r[iId] ?? ''}`
     if ((r[iProd] ?? '') === '' || cantitateBon.has(cheie)) continue
-    cantitateBon.set(cheie, { produs: r[iProd] ?? '', cant: Number(r[iCant]) || 1 })
+    cantitateBon.set(cheie, {
+      produs: r[iProd] ?? '',
+      cant: Number(r[iCant]) || 1,
+      zi: Number(r[iZi]) || 0,
+    })
   }
+
+  // The cut-off day per product: everything from its most recent bons onwards.
+  const zilePerProdus = new Map<string, number[]>()
   for (const v of cantitateBon.values()) {
-    bonuriPerProdus.set(v.produs, (bonuriPerProdus.get(v.produs) ?? 0) + 1)
+    const zile = zilePerProdus.get(v.produs) ?? []
+    zile.push(v.zi)
+    zilePerProdus.set(v.produs, zile)
+  }
+  for (const [produs, zile] of zilePerProdus) {
+    const sortate = [...zile].sort((a, b) => b - a)
+    pragRecent.set(produs, sortate[Math.min(BONURI_RECENTE, sortate.length) - 1] ?? 0)
+    bonuriPerProdus.set(produs, Math.min(BONURI_RECENTE, sortate.length))
   }
 
   for (const r of foaie.randuri.slice(1)) {
@@ -73,11 +101,13 @@ if (numeIstoric !== null) {
     const consum = perProdus.get(material) ?? {
       denumire: r[iDenMat] ?? '',
       um: r[iUmMat] ?? '',
-      bonuri: new Set<string>(),
-      perUnitate: [],
+      observatii: [],
     }
-    consum.bonuri.add(`${r[iNr] ?? ''}#${r[iId] ?? ''}`)
-    consum.perUnitate.push((Number(r[iCantMat]) || 0) / (bon.cant || 1))
+    consum.observatii.push({
+      zi: Number(r[iZi]) || 0,
+      perUnitate: (Number(r[iCantMat]) || 0) / (bon.cant || 1),
+      bon: `${r[iNr] ?? ''}#${r[iId] ?? ''}`,
+    })
     perProdus.set(material, consum)
     istoric.set(produs, perProdus)
   }
@@ -97,6 +127,8 @@ interface Propunere {
   um: string
   frecventa: number
   medie: number
+  /** What the older bons used, when they disagree — the recipe drifted. */
+  vechi: number | null
   nume: number
   /** Name and quantity agree — the only combination worth trusting. */
   tare: boolean
@@ -108,23 +140,31 @@ function dinIstoric(codProdus: string | null, denumire: string, cantitate: numbe
   const nrBonuri = bonuriPerProdus.get(codProdus) ?? 0
   if (consumuri === undefined || nrBonuri === 0) return []
 
+  const prag = pragRecent.get(codProdus) ?? 0
+
   return [...consumuri]
     .map(([cod, c]) => {
-      const medie = mediana(c.perUnitate)
+      const recente = c.observatii.filter((o) => o.zi >= prag)
+      const medie = mediana(recente.map((o) => o.perUnitate))
+      const vechi = mediana(c.observatii.filter((o) => o.zi < prag).map((o) => o.perUnitate))
       const abatere = cantitate > 0 ? Math.abs(medie - cantitate) / cantitate : 1
       const nume = scorSimilaritate(denumire, c.denumire)
+      const frecventa = new Set(recente.map((o) => o.bon)).size / nrBonuri
       return {
         cod,
         denumire: c.denumire,
         um: c.um,
-        frecventa: c.bonuri.size / nrBonuri,
+        frecventa,
         medie,
+        // Only meaningful when the older bons say something different.
+        vechi: vechi > 0 && Math.abs(vechi - medie) / Math.max(medie, 0.0001) > 0.05 ? vechi : null,
         nume,
         // Quantity alone collides constantly — half the recipe is "2" of
         // something. Only together with the name does it decide anything.
-        tare: nume >= 0.5 && abatere <= 0.05 && c.bonuri.size / nrBonuri >= 0.25,
+        tare: nume >= 0.5 && abatere <= 0.05 && frecventa >= 0.25,
       }
     })
+    .filter((p) => p.medie > 0)
     .filter((p) => p.nume >= 0.35)
     .sort((a, b) => Number(b.tare) - Number(a.tare) || b.nume - a.nume)
     .slice(0, 3)
@@ -180,7 +220,8 @@ foaie.addRow([
   'COD ALES  ← completează aici',
   'Din istoricul de producție 1',
   'Cât de des',
-  'Cantitate/buc',
+  'Cantitate/buc (recent)',
+  'S-a schimbat?',
   'Din istoricul de producție 2',
   'Din istoricul de producție 3',
   'Doar după denumire 1',
@@ -226,6 +267,7 @@ for (const fisa of FISE) {
       eticheta(dinProductie[0]),
       dinProductie[0] === undefined ? '' : `${Math.round(dinProductie[0].frecventa * 100)}%`,
       dinProductie[0] === undefined ? '' : Number(dinProductie[0].medie.toFixed(4)),
+      dinProductie[0]?.vechi == null ? '' : `înainte: ${dinProductie[0].vechi.toFixed(4)}`,
       eticheta(dinProductie[1]),
       eticheta(dinProductie[2]),
       sugestii[0] === undefined
