@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc --build",
+    "build": "tsc --build tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed": "tsx --env-file=.env scripts/seed.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

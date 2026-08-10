@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1786349256190,
+      "tag": "20260810080736_complex_norman_osborn",
+      "breakpoints": true
+    }
+  ]
+}

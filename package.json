@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "db:generate": "pnpm --filter @samobi/shared db:generate",
-    "db:push": "supabase db push"
+    "db:push": "supabase db push",
+    "db:seed": "pnpm --filter @samobi/api seed"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

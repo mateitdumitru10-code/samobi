@@ -10,6 +10,8 @@ export default defineConfig({
     url: process.env.DIRECT_URL ?? '',
   },
   schemaFilter: ['public'],
+  // Timestamped filenames, so `supabase db push` accepts what drizzle-kit writes.
+  migrations: { prefix: 'supabase' },
   verbose: true,
   strict: true,
 })

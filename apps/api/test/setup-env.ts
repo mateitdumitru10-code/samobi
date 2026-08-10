@@ -1,5 +1,18 @@
-// Fake configuration so `src/env.ts` validates during unit tests.
-// Tests that touch a real database get their connection from .env instead.
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+// Vitest does not read .env. Tests that touch the database need the real
+// connection strings; unit tests only need `src/env.ts` to validate.
+const caleEnv = resolve(import.meta.dirname, '..', '.env')
+if (existsSync(caleEnv)) {
+  for (const rand of readFileSync(caleEnv, 'utf8').split('\n')) {
+    const potrivire = /^([A-Z0-9_]+)=(.*)$/.exec(rand.trim())
+    if (potrivire?.[1] !== undefined && process.env[potrivire[1]] === undefined) {
+      process.env[potrivire[1]] = potrivire[2]
+    }
+  }
+}
+
 process.env.NODE_ENV = 'test'
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/postgres'
 process.env.DIRECT_URL ??= 'postgresql://postgres:postgres@localhost:5432/postgres'
