@@ -74,6 +74,58 @@ export class EroareValoareLipsaPeDimensiune extends EroareCalcul {
   }
 }
 
+/**
+ * A `tabel` line at a size nobody registered.
+ *
+ * The mode exists because the value does not follow from geometry — it is a
+ * cutting layout somebody decided. So at an unregistered size there is nothing
+ * to look up and nothing honest to interpolate: the engine asks for the number
+ * and records who gave it.
+ */
+export class EroareValoareManualaLipsa extends EroareCalcul {
+  readonly cod = 'VALOARE_MANUALA_LIPSA'
+
+  constructor(
+    readonly linii: readonly { nrLinie: number; grup: string; um: string }[],
+  ) {
+    super(
+      `Liniile ${linii.map((l) => l.nrLinie).join(', ')} sunt pe mod „tabel" și nu au ` +
+        `valoare pentru o dimensiune la comandă. Cantitățile trebuie introduse la bon.`,
+      { nrLinii: linii.map((l) => l.nrLinie).join(',') },
+    )
+  }
+}
+
+/** `numeric(18,6)` reads back as '1800.000000'; nobody says that out loud. */
+function mm(valoare: string): string {
+  const n = Number(valoare)
+  return Number.isFinite(n) ? String(n) : valoare
+}
+
+export class EroareDimensiuneInAfaraIntervalului extends EroareCalcul {
+  readonly cod = 'DIMENSIUNE_IN_AFARA_INTERVALULUI'
+
+  constructor(axa: 'lungime' | 'lățime' | 'înălțime', valoare: string, min: string, max: string) {
+    super(
+      `${axa[0]?.toUpperCase()}${axa.slice(1)} de ${mm(valoare)} mm este în afara intervalului ` +
+        `acceptat de model: ${mm(min)}–${mm(max)} mm.`,
+      { axa, valoare: mm(valoare), min: mm(min), max: mm(max) },
+    )
+  }
+}
+
+/** The model has not been opened to made-to-order sizes at all. */
+export class EroareDimensiuneLaComandaNepermisa extends EroareCalcul {
+  readonly cod = 'DIMENSIUNE_LA_COMANDA_NEPERMISA'
+
+  constructor() {
+    super(
+      'Modelul nu acceptă dimensiuni la comandă. Tehnologul stabilește intervalul la ' +
+        '„Modele și rețete".',
+    )
+  }
+}
+
 export class EroareCantitateFixaLipsa extends EroareCalcul {
   readonly cod = 'CANTITATE_FIXA_LIPSA'
 

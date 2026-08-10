@@ -43,6 +43,13 @@
       "when": 1786374344136,
       "tag": "20260810150544_motiv_respingere",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786376627574,
+      "tag": "20260810154347_dimensiuni_la_comanda",
+      "breakpoints": true
     }
   ]
 }

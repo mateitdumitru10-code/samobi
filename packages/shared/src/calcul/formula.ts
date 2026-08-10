@@ -82,7 +82,36 @@ function creeazaParser(): Parser {
     delete parser.consts[nume]
   }
 
+  // The three discontinuous ones get their argument snapped first. Everywhere
+  // else IEEE noise stays noise — 1e-16 on a smooth formula is stripped later
+  // by `toPrecision`. A step function amplifies it to a whole unit:
+  // `ceil((0.1 + 0.2) * 10)` is 4, because the double is 3.0000000000000004,
+  // and that is one entire extra sheet of PAL booked into SAGA.
+  //
+  // They live in `unaryOps`, not `functions` — expr-eval parses `ceil(x)` as a
+  // unary operator. Overriding the wrong table changes nothing, silently.
+  const unare = parser.unaryOps as Record<string, (x: number) => number>
+  unare['ceil'] = (x) => Math.ceil(apropie(x))
+  unare['floor'] = (x) => Math.floor(apropie(x))
+  unare['round'] = (x) => Math.round(apropie(x))
+
   return parser
+}
+
+/**
+ * Digits kept before a step function looks at its argument.
+ *
+ * Dimensions carry at most five significant digits and authored constants
+ * rarely more than seven, so nothing a person wrote distinguishes values past
+ * the twelfth digit — but all the accumulated float noise lives there. The rule
+ * this encodes, in one sentence: a value within one part in 10¹² of a boundary
+ * counts as being on the boundary.
+ */
+const CIFRE_PRAG = 12
+
+function apropie(valoare: number): number {
+  if (!Number.isFinite(valoare) || valoare === 0) return valoare
+  return Number(valoare.toPrecision(CIFRE_PRAG))
 }
 
 const parser = creeazaParser()
@@ -149,6 +178,70 @@ export function valideazaFormula(formula: string, nrLinie?: number): FormulaVali
     variabile: folosite as VariabilaPermisa[],
     foloseteInaltime: folosite.includes('H'),
   }
+}
+
+/** One evaluation point that a formula failed on, for a readable message. */
+export interface PunctInvalid {
+  L: number
+  l: number
+  H: number | null
+  motiv: string
+}
+
+/**
+ * Proves a formula holds across the whole range a model is sold in.
+ *
+ * The single test point is enough while every size is a registered row someone
+ * looked at. It stops being enough the moment sizes are made to order: `L/(l-900)`
+ * evaluates perfectly at 2000×1600 and divides by zero at a width of 900, which
+ * the operator would discover with a customer on the phone. Corners are checked
+ * because a formula built from `+ - * / ceil floor min max sqrt` fails, if it
+ * fails at all, at an extreme of one of its variables.
+ */
+export function valideazaFormulaPeInterval(
+  formula: string,
+  interval: {
+    lungimeMin: number
+    lungimeMax: number
+    latimeMin: number
+    latimeMax: number
+    inaltimeMin: number | null
+    inaltimeMax: number | null
+  },
+  nrLinie?: number,
+): PunctInvalid[] {
+  const validata = valideazaFormula(formula, nrLinie)
+  const expresie = parser.parse(validata.formula)
+
+  const inaltimi: (number | null)[] =
+    validata.foloseteInaltime && interval.inaltimeMin !== null && interval.inaltimeMax !== null
+      ? [...new Set([interval.inaltimeMin, interval.inaltimeMax])]
+      : [null]
+
+  const rele: PunctInvalid[] = []
+
+  for (const L of new Set([interval.lungimeMin, interval.lungimeMax])) {
+    for (const l of new Set([interval.latimeMin, interval.latimeMax])) {
+      for (const H of inaltimi) {
+        let rezultat: unknown
+        try {
+          rezultat = expresie.evaluate(valoriDinScop({ L, l, H }))
+        } catch (err) {
+          rele.push({ L, l, H, motiv: (err as Error).message })
+          continue
+        }
+        if (typeof rezultat !== 'number' || !Number.isFinite(rezultat)) {
+          rele.push({ L, l, H, motiv: 'nu produce un număr finit' })
+        } else if (rezultat <= 0) {
+          // Zero is as wrong as negative: a line that contributes nothing at one
+          // end of the range is a line that will be missing from a real bon.
+          rele.push({ L, l, H, motiv: `dă ${rezultat}` })
+        }
+      }
+    }
+  }
+
+  return rele
 }
 
 export interface RezultatFormula {

@@ -40,6 +40,59 @@ export const schemaModel = z.object({
 })
 export type ModelNou = z.infer<typeof schemaModel>
 
+const milimetriInterval = z
+  .string()
+  .trim()
+  .regex(/^[1-9]\d{0,4}$/, 'Milimetri întregi, ex. 2200.')
+  .nullable()
+
+/**
+ * The made-to-order envelope.
+ *
+ * All six fields travel together so a half-declared interval — a maximum with
+ * no minimum — cannot exist even briefly. Null on length and width means the
+ * model is issued only on its registered dimensions, which is the default.
+ */
+export const schemaLaComanda = z
+  .object({
+    lungimeMin: milimetriInterval,
+    lungimeMax: milimetriInterval,
+    latimeMin: milimetriInterval,
+    latimeMax: milimetriInterval,
+    inaltimeMin: milimetriInterval,
+    inaltimeMax: milimetriInterval,
+    codSagaProdusComanda: z.string().trim().max(40).nullable(),
+  })
+  .refine((v) => (v.lungimeMin === null) === (v.lungimeMax === null), {
+    message: 'Completează ambele capete ale intervalului de lungime.',
+    path: ['lungimeMax'],
+  })
+  .refine((v) => (v.latimeMin === null) === (v.latimeMax === null), {
+    message: 'Completează ambele capete ale intervalului de lățime.',
+    path: ['latimeMax'],
+  })
+  .refine((v) => (v.inaltimeMin === null) === (v.inaltimeMax === null), {
+    message: 'Completează ambele capete ale intervalului de înălțime.',
+    path: ['inaltimeMax'],
+  })
+  .refine((v) => (v.lungimeMin === null) === (v.latimeMin === null), {
+    message: 'Lungimea și lățimea se declară împreună.',
+    path: ['latimeMin'],
+  })
+  .refine((v) => v.lungimeMin === null || Number(v.lungimeMax) >= Number(v.lungimeMin), {
+    message: 'Minimul trebuie să fie mai mic decât maximul.',
+    path: ['lungimeMax'],
+  })
+  .refine((v) => v.latimeMin === null || Number(v.latimeMax) >= Number(v.latimeMin), {
+    message: 'Minimul trebuie să fie mai mic decât maximul.',
+    path: ['latimeMax'],
+  })
+  .refine((v) => v.inaltimeMin === null || Number(v.inaltimeMax) >= Number(v.inaltimeMin), {
+    message: 'Minimul trebuie să fie mai mic decât maximul.',
+    path: ['inaltimeMax'],
+  })
+export type LaComanda = z.infer<typeof schemaLaComanda>
+
 export const schemaModificareModel = schemaModel.partial().extend({
   activ: z.boolean().optional(),
 })

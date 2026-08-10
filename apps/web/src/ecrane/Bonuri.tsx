@@ -26,8 +26,41 @@ interface RandModel {
 interface Dimensiune {
   id: string
   cod: string
+  lungime: string
+  latime: string
+  inaltime: string | null
   codSagaProdus: string | null
 }
+
+/** The envelope the model may be built in, when it is sold made to order. */
+interface LaComanda {
+  lungimeMin: string
+  lungimeMax: string
+  latimeMin: string
+  latimeMax: string
+  inaltimeMin: string | null
+  inaltimeMax: string | null
+  codSagaProdus: string | null
+  denumireProdus: string | null
+}
+
+interface LinieTabel {
+  id: string
+  nrLinie: number
+  grup: string
+  um: string
+  valori: { dimensiuneId: string; cantitate: string }[]
+}
+
+interface Context {
+  dimensiuni: Dimensiune[]
+  laComanda: LaComanda | null
+  liniiVariabile: LinieVariabila[]
+  liniiTabel: LinieTabel[]
+}
+
+/** The value chosen in the dimension select when the size is made to order. */
+const LA_COMANDA = 'la-comanda'
 
 interface LinieVariabila {
   id: string
@@ -56,7 +89,10 @@ interface RandBon {
   status: string
   modelCod: string
   modelDenumire: string
-  dimensiuneCod: string
+  dimensiuneCod: string | null
+  lungime: string
+  latime: string
+  inaltime: string | null
   codSagaProdus: string
   denumireProdus: string | null
 }
@@ -115,19 +151,42 @@ function BonNou() {
   const [alegeri, setAlegeri] = useState<Record<string, ArticolGasit>>({})
   const [salvat, setSalvat] = useState<{ cantitate: string; linii: Consum[] } | null>(null)
   const refCantitate = useRef<HTMLInputElement>(null)
+  const refLungime = useRef<HTMLInputElement>(null)
+
+  // Made-to-order state. Kept apart from `dimensiuneId` on purpose: the two are
+  // alternatives, and mixing them is how a form ends up sending both.
+  const [lungime, setLungime] = useState('')
+  const [latime, setLatime] = useState('')
+  const [inaltime, setInaltime] = useState('')
+  const [valoriManuale, setValoriManuale] = useState<Record<string, string>>({})
 
   const modele = useQuery({
     queryKey: ['modele'],
     queryFn: () => apel<RandModel[]>('/modele'),
   })
 
+  // The variable and table lines come from the recipe, not from the size, so any
+  // registered dimension will do to load them — including for a made-to-order
+  // bon, which has no dimension of its own.
+  const dimensiunePentruContext =
+    dimensiuneId === LA_COMANDA ? '' : dimensiuneId
+
   const context = useQuery({
-    queryKey: ['bon-context', modelId, dimensiuneId],
+    queryKey: ['bon-context', modelId, dimensiunePentruContext],
     queryFn: () =>
-      apel<{ dimensiuni: Dimensiune[]; liniiVariabile: LinieVariabila[] }>(
-        `/bonuri/context/${modelId}${dimensiuneId === '' ? '' : `?dimensiuneId=${dimensiuneId}`}`,
+      apel<Context>(
+        `/bonuri/context/${modelId}${
+          dimensiunePentruContext === '' ? '' : `?dimensiuneId=${dimensiunePentruContext}`
+        }`,
       ),
     enabled: modelId !== '',
+  })
+
+  const contextComanda = useQuery({
+    queryKey: ['bon-context-comanda', modelId, context.data?.dimensiuni[0]?.id],
+    queryFn: () =>
+      apel<Context>(`/bonuri/context/${modelId}?dimensiuneId=${context.data?.dimensiuni[0]?.id ?? ''}`),
+    enabled: dimensiuneId === LA_COMANDA && (context.data?.dimensiuni.length ?? 0) > 0,
   })
 
   const gestiuni = useQuery({
@@ -140,18 +199,64 @@ function BonNou() {
   useEffect(() => {
     setDimensiuneId('')
     setAlegeri({})
+    setValoriManuale({})
+    setLungime('')
+    setLatime('')
+    setInaltime('')
   }, [modelId])
 
+  const laComanda = dimensiuneId === LA_COMANDA
+  const interval = context.data?.laComanda ?? null
   const dimensiune = context.data?.dimensiuni.find((d) => d.id === dimensiuneId)
-  const liniiVariabile = context.data?.liniiVariabile ?? []
+  const sursaLinii = laComanda ? (contextComanda.data ?? null) : (context.data ?? null)
+  const liniiVariabile = sursaLinii?.liniiVariabile ?? []
+  const liniiTabel = laComanda ? (sursaLinii?.liniiTabel ?? []) : []
   const toateAlese = liniiVariabile.every((l) => alegeri[l.id] !== undefined)
+
+  const inAfara = (valoare: string, min: string | null, max: string | null): boolean => {
+    if (valoare === '' || min === null || max === null) return false
+    const n = Number(valoare)
+    return !Number.isFinite(n) || n < Number(min) || n > Number(max)
+  }
+
+  const masuriValide =
+    !laComanda ||
+    (interval !== null &&
+      /^[1-9]\d{0,4}$/.test(lungime) &&
+      /^[1-9]\d{0,4}$/.test(latime) &&
+      (inaltime === '' || /^[1-9]\d{0,4}$/.test(inaltime)) &&
+      !inAfara(lungime, interval.lungimeMin, interval.lungimeMax) &&
+      !inAfara(latime, interval.latimeMin, interval.latimeMax) &&
+      !inAfara(inaltime, interval.inaltimeMin, interval.inaltimeMax))
+
+  const manualeComplete =
+    !laComanda || liniiTabel.every((l) => normalizeazaZecimala(valoriManuale[l.id] ?? '') !== null)
+
+  /** The registered size the operator typed by hand, if they did. */
+  const dimensiuneIdentica = laComanda
+    ? context.data?.dimensiuni.find(
+        (d) =>
+          Number(d.lungime) === Number(lungime) &&
+          Number(d.latime) === Number(latime) &&
+          (inaltime === '' ? d.inaltime === null : Number(d.inaltime) === Number(inaltime)),
+      )
+    : undefined
 
   const cantitateCurata = normalizeazaZecimala(cantitate)
   const cantitateInvalida = cantitate.trim() !== '' && cantitateCurata === null
 
   const corp = () => ({
     modelId,
-    dimensiuneId,
+    ...(laComanda
+      ? {
+          dimensiune: { lungime, latime, inaltime: inaltime === '' ? null : inaltime },
+          valoriManuale: Object.fromEntries(
+            Object.entries(valoriManuale)
+              .map(([k, v]) => [k, normalizeazaZecimala(v) ?? ''])
+              .filter(([, v]) => v !== ''),
+          ),
+        }
+      : { dimensiuneId }),
     cantitate: cantitateCurata ?? '',
     alegeri: Object.fromEntries(Object.entries(alegeri).map(([k, a]) => [k, a.codSaga])),
   })
@@ -184,12 +289,16 @@ function BonNou() {
     onError: (e) => notificari.eroare(mesajEroare(e)),
   })
 
+  const codPredare = laComanda ? (interval?.codSagaProdus ?? null) : (dimensiune?.codSagaProdus ?? null)
+
   const gata =
     modelId !== '' &&
     dimensiuneId !== '' &&
     toateAlese &&
+    masuriValide &&
+    manualeComplete &&
     cantitateCurata !== null &&
-    dimensiune?.codSagaProdus != null
+    codPredare !== null
 
   /**
    * Anything that changes the numbers invalidates the preview.
@@ -202,7 +311,7 @@ function BonNou() {
   useEffect(() => {
     reset()
     setSalvat(null)
-  }, [reset, cantitate, dimensiuneId, alegeri])
+  }, [reset, cantitate, dimensiuneId, alegeri, lungime, latime, inaltime, valoriManuale])
 
   function trimite(eveniment: FormEvent) {
     eveniment.preventDefault()
@@ -262,6 +371,9 @@ function BonNou() {
                 {d.cod}
               </option>
             ))}
+            {/* The entire cost of this feature to the common path: one line in a
+                dropdown nobody scrolls past their target. */}
+            {interval !== null && <option value={LA_COMANDA}>Altă dimensiune…</option>}
           </select>
         </div>
 
@@ -330,6 +442,118 @@ function BonNou() {
           </datalist>
         </div>
       </div>
+
+      {laComanda && interval !== null && (
+        <div className="rounded-lg border border-line bg-surface-page p-4">
+          <h3 className="text-sm font-semibold text-ink">Dimensiune la comandă (mm)</h3>
+
+          <div className="mt-3 flex flex-wrap gap-4">
+            <MasuraLaComanda
+              eticheta="Lungime"
+              valoare={lungime}
+              onSchimba={setLungime}
+              min={interval.lungimeMin}
+              max={interval.lungimeMax}
+              refInput={refLungime}
+            />
+            <MasuraLaComanda
+              eticheta="Lățime"
+              valoare={latime}
+              onSchimba={setLatime}
+              min={interval.latimeMin}
+              max={interval.latimeMax}
+            />
+            {interval.inaltimeMin !== null && interval.inaltimeMax !== null && (
+              <MasuraLaComanda
+                eticheta="Înălțime"
+                valoare={inaltime}
+                onSchimba={setInaltime}
+                min={interval.inaltimeMin}
+                max={interval.inaltimeMax}
+              />
+            )}
+          </div>
+
+          {dimensiuneIdentica !== undefined && (
+            <p className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-info-border bg-info-bg px-3 py-2 text-sm text-info">
+              Exact dimensiunea înregistrată {dimensiuneIdentica.cod}. Folosește-o — bonul se predă
+              pe codul ei de produs.
+              <button
+                type="button"
+                onClick={() => setDimensiuneId(dimensiuneIdentica.id)}
+                className="buton buton-secundar buton-mic"
+              >
+                Treci pe {dimensiuneIdentica.cod}
+              </button>
+            </p>
+          )}
+
+          <p className="mt-3 text-sm">
+            {interval.codSagaProdus === null ? (
+              <span className="text-atentie">
+                Modelul acceptă dimensiuni la comandă, dar nu are cod de predare pentru ele.
+                Tehnologul îl leagă la „Modele și rețete".
+              </span>
+            ) : (
+              <>
+                <span className="text-ink-secondary">Se predă pe: </span>
+                <span className="font-mono text-xs">{interval.codSagaProdus}</span>{' '}
+                <span className="text-ink">{interval.denumireProdus}</span>
+                <span className="mt-0.5 block text-xs text-ink-muted">
+                  În SAGA apare acest cod; dimensiunea rămâne pe bon, aici în aplicație.
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      {laComanda && liniiTabel.length > 0 && (
+        <div className="rounded-lg border border-atentie-border bg-atentie-bg p-4">
+          <h3 className="text-sm font-semibold text-atentie">
+            Cantități de completat (
+            {liniiTabel.filter((l) => normalizeazaZecimala(valoriManuale[l.id] ?? '') !== null).length}
+            /{liniiTabel.length})
+          </h3>
+          <p className="mt-1 text-sm text-ink-secondary">
+            Liniile «tabel» nu au valori pentru dimensiunea asta. Rețeta nu le poate calcula —
+            metrajul depinde de croială, nu de geometrie. Dacă nu-l știi, cere-l tehnologului.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {liniiTabel.map((l) => (
+              <li key={l.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="w-52 shrink-0 text-ink-secondary">
+                  linia {l.nrLinie} · {l.grup} · {l.um}
+                </span>
+                <input
+                  value={valoriManuale[l.id] ?? ''}
+                  inputMode="decimal"
+                  aria-label={`Cantitate pentru linia ${l.nrLinie}`}
+                  aria-invalid={
+                    (valoriManuale[l.id] ?? '') !== '' &&
+                    normalizeazaZecimala(valoriManuale[l.id] ?? '') === null
+                  }
+                  onChange={(e) =>
+                    setValoriManuale((curente) => ({ ...curente, [l.id]: e.target.value }))
+                  }
+                  className="camp camp-mic w-24 text-right tabular-nums"
+                />
+                {l.valori.length > 0 && (
+                  <span className="text-xs text-ink-muted">
+                    {l.valori
+                      .map((v) => {
+                        const dim = context.data?.dimensiuni.find((d) => d.id === v.dimensiuneId)
+                        return dim === undefined ? null : `la ${dim.cod}: ${cant(v.cantitate)}`
+                      })
+                      .filter((x) => x !== null)
+                      .join(' · ')}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {dimensiune !== undefined && dimensiune.codSagaProdus === null && (
         <p className="rounded-lg border border-atentie-border bg-atentie-bg px-3 py-2 text-sm text-atentie">
@@ -430,13 +654,68 @@ function BonNou() {
             {salvat !== null ? 'Consumuri salvate' : 'Consumuri'} pentru{' '}
             <strong className="text-ink">
               {cant(salvat?.cantitate ?? cantitateCurata)} buc · {modelAles?.denumire}{' '}
-              {dimensiune?.cod}
+              {laComanda
+                ? `${lungime}×${latime}${inaltime === '' ? '' : `×${inaltime}`}`
+                : dimensiune?.cod}
             </strong>
+            {laComanda && <Insigna fel="info">la comandă</Insigna>}
           </p>
           <TabelConsumuri linii={liniiAfisate} />
         </div>
       )}
     </form>
+  )
+}
+
+/**
+ * One made-to-order measurement.
+ *
+ * Whole millimetres only. Furniture is not cut at half a millimetre, and
+ * refusing the decimal removes the question of whether the comma meant a
+ * decimal point or a thumb on the wrong key.
+ */
+function MasuraLaComanda({
+  eticheta,
+  valoare,
+  onSchimba,
+  min,
+  max,
+  refInput,
+}: {
+  eticheta: string
+  valoare: string
+  onSchimba: (v: string) => void
+  min: string
+  max: string
+  refInput?: React.RefObject<HTMLInputElement | null>
+}) {
+  const intreg = /^[1-9]\d{0,4}$/.test(valoare)
+  const n = Number(valoare)
+  const subMinim = intreg && n < Number(min)
+  const pesteMaxim = intreg && n > Number(max)
+  const gresit = valoare !== '' && (!intreg || subMinim || pesteMaxim)
+
+  return (
+    <div>
+      <label className="eticheta">{eticheta}</label>
+      <input
+        ref={refInput}
+        value={valoare}
+        inputMode="numeric"
+        aria-invalid={gresit}
+        onChange={(e) => onSchimba(e.target.value)}
+        className="camp w-28 text-right tabular-nums"
+      />
+      <p className={`indiciu ${gresit ? 'text-danger' : ''}`}>
+        {!intreg && valoare !== ''
+          ? 'milimetri întregi, ex. 2150'
+          : subMinim
+            ? `sub minimul de ${Number(min)}`
+            : pesteMaxim
+              ? `peste maximul de ${Number(max)}`
+              : `${Number(min)}–${Number(max)}`}
+      </p>
+    </div>
   )
 }
 
@@ -825,7 +1104,17 @@ function RandBonuri({
             <span className="ml-2 font-mono text-xs text-ink-muted">{bon.codSagaProdus}</span>
           </button>
         </td>
-        <td className="px-4 py-2 text-ink-secondary">{bon.dimensiuneCod}</td>
+        <td className="px-4 py-2 text-ink-secondary">
+          {bon.dimensiuneCod ?? (
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className="tabular-nums">
+                {Number(bon.lungime)}×{Number(bon.latime)}
+                {bon.inaltime === null ? '' : `×${Number(bon.inaltime)}`}
+              </span>
+              <Insigna fel="info">la comandă</Insigna>
+            </span>
+          )}
+        </td>
         <td className="px-4 py-2 text-right tabular-nums">{cant(bon.cantitate)}</td>
         <td className="px-4 py-2">
           <Insigna fel={stare.fel}>{stare.text}</Insigna>

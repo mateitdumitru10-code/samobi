@@ -8,6 +8,7 @@ import { CautaArticol } from '../ui/CautaArticol.js'
 import { useNotificari } from '../ui/Notificari.js'
 import { BannerEroare, Gol, Insigna, Schelet, mesajEroare } from '../ui/stari.js'
 
+import { LaComanda, type ModelLaComanda } from './LaComanda.js'
 import { RetetaEditor } from './RetetaEditor.js'
 
 interface RandModel {
@@ -32,7 +33,7 @@ interface Dimensiune {
   activ: boolean
 }
 
-interface Detaliu extends RandModel {
+interface Detaliu extends RandModel, ModelLaComanda {
   dimensiuni: Dimensiune[]
 }
 
@@ -289,6 +290,8 @@ function DetaliuModel({
       </div>
 
       <Dimensiuni modelId={modelId} dimensiuni={detaliu.data.dimensiuni} poateEdita={poateEdita} />
+
+      <LaComanda model={detaliu.data} poateEdita={poateEdita} />
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-ink">Rețetă</h3>
