@@ -11,7 +11,7 @@ import {
   type LinieReteta,
   type RezultatCalcul,
 } from '@samobi/shared/calcul'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 
 import { db } from '../db.js'
 import { CerereInvalida, NuExista } from '../erori.js'
@@ -31,12 +31,16 @@ export async function incarcaPentruCalcul(modelId: string, dimensiuneId: string)
 
   if (dim === undefined) throw new NuExista('Dimensiunea nu aparține modelului ales.')
 
-  const [reteta] = await db
+  const versiuni = await db
     .select()
     .from(recipe)
     .where(eq(recipe.modelId, modelId))
-    .orderBy(asc(recipe.versiune))
-    .limit(1)
+    .orderBy(desc(recipe.versiune))
+
+  // The approved version, always, when there is one. A bon must be built from
+  // what was signed off, not from whatever a tehnolog happens to be editing.
+  // Before anything is approved, the newest draft stands in.
+  const reteta = versiuni.find((r) => r.status === 'activa') ?? versiuni[0]
 
   if (reteta === undefined) throw new CerereInvalida('Modelul nu are rețetă.')
 

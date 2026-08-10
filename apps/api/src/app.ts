@@ -12,6 +12,7 @@ import { ruteConturi } from './rute/conturi.js'
 import { ruteModele } from './rute/modele.js'
 import { ruteNomenclator } from './rute/nomenclator.js'
 import { ruteRetete } from './rute/retete.js'
+import { ruteVersiuni } from './rute/versiuni.js'
 
 export interface OptiuniApp {
   /** Overridden in tests so guards can be exercised without real Supabase tokens. */
@@ -42,6 +43,7 @@ export async function buildApp(optiuni: OptiuniApp = {}): Promise<FastifyInstanc
   ruteNomenclator(app, verifica)
   ruteModele(app, verifica)
   ruteRetete(app, verifica)
+  ruteVersiuni(app, verifica)
   ruteBonuri(app, verifica)
 
   return app

@@ -1,10 +1,12 @@
 import { GRUPURI, MODURI_CALCUL } from '@samobi/shared/db'
-import type { RezultatValidareFormula } from '@samobi/shared/scheme'
+import type { RezultatValidareFormula, UtilizatorCurent } from '@samobi/shared/scheme'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { apel, EroareApi } from '../lib/api.js'
 import { coordonate, useNavigareGrila } from '../lib/grila.js'
+
+import { Versiuni } from './Versiuni.js'
 
 interface Dimensiune {
   id: string
@@ -135,7 +137,16 @@ function campActiv(modCalcul: string, camp: 'cantitateFixa' | 'formula'): boolea
   return modCalcul === 'formula'
 }
 
-export function RetetaEditor({ modelId, poateEdita }: { modelId: string; poateEdita: boolean }) {
+export function RetetaEditor({
+  modelId,
+  poateEdita,
+  utilizator,
+}: {
+  modelId: string
+  poateEdita: boolean
+  utilizator: UtilizatorCurent
+}) {
+  const [versiuneAleasa, setVersiuneAleasa] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const containerRef = useRef<HTMLDivElement>(null)
   const navigheaza = useNavigareGrila(() => containerRef.current)
@@ -148,8 +159,11 @@ export function RetetaEditor({ modelId, poateEdita }: { modelId: string; poateEd
   const [linieSelectata, setLinieSelectata] = useState<string | null>(null)
 
   const reteta = useQuery({
-    queryKey: ['reteta', modelId],
-    queryFn: () => apel<Reteta>(`/modele/${modelId}/reteta`),
+    queryKey: ['reteta', modelId, versiuneAleasa],
+    queryFn: () =>
+      apel<Reteta>(
+        `/modele/${modelId}/reteta${versiuneAleasa === null ? '' : `?versiuneId=${versiuneAleasa}`}`,
+      ),
   })
 
   useEffect(() => {
@@ -281,8 +295,8 @@ export function RetetaEditor({ modelId, poateEdita }: { modelId: string; poateEd
   )
 
   const overrideFaraMotiv = overrideuri.some((o) => o.valoare.motiv.trim() === '')
-  const activa = reteta.data?.status === 'activa'
-  const blocat = !poateEdita || activa
+  // Only a draft is editable. Approved recipes are what bons were built on.
+  const blocat = !poateEdita || reteta.data?.status !== 'draft'
 
   if (reteta.isLoading) {
     return <p className="text-sm text-neutral-500">Se încarcă rețeta…</p>
@@ -297,14 +311,15 @@ export function RetetaEditor({ modelId, poateEdita }: { modelId: string; poateEd
 
   return (
     <div className="space-y-4">
+      <Versiuni
+        modelId={modelId}
+        versiuneCurenta={reteta.data?.id ?? null}
+        utilizator={utilizator}
+        onSchimbaVersiune={setVersiuneAleasa}
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 text-sm">
-          <span className="text-neutral-500">
-            versiunea {reteta.data?.versiune} ·{' '}
-            <span className={activa ? 'text-green-700' : 'text-neutral-700'}>
-              {reteta.data?.status}
-            </span>
-          </span>
           {modificat && <span className="text-amber-700">modificări nesalvate</span>}
         </div>
 
@@ -347,12 +362,6 @@ export function RetetaEditor({ modelId, poateEdita }: { modelId: string; poateEd
       {salveaza.isError && conflict === null && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
           {(salveaza.error as EroareApi).message}
-        </p>
-      )}
-
-      {activa && (
-        <p className="rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-600">
-          Rețeta este activă și nu se mai modifică. Versionarea vine la modulul următor.
         </p>
       )}
 

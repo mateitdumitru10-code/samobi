@@ -91,7 +91,7 @@ export function Modele({ utilizator }: { utilizator: UtilizatorCurent }) {
               Alege un model din stânga ca să-i vezi dimensiunile și rețeta.
             </p>
           ) : (
-            <DetaliuModel modelId={selectat} poateEdita={poateEdita} />
+            <DetaliuModel modelId={selectat} poateEdita={poateEdita} utilizator={utilizator} />
           )}
         </div>
       </div>
@@ -164,7 +164,15 @@ function FormularModel() {
   )
 }
 
-function DetaliuModel({ modelId, poateEdita }: { modelId: string; poateEdita: boolean }) {
+function DetaliuModel({
+  modelId,
+  poateEdita,
+  utilizator,
+}: {
+  modelId: string
+  poateEdita: boolean
+  utilizator: UtilizatorCurent
+}) {
   const detaliu = useQuery({
     queryKey: ['model', modelId],
     queryFn: () => apel<Detaliu>(`/modele/${modelId}`),
@@ -184,7 +192,7 @@ function DetaliuModel({ modelId, poateEdita }: { modelId: string; poateEdita: bo
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-neutral-900">Rețetă</h3>
-        <RetetaEditor modelId={modelId} poateEdita={poateEdita} />
+        <RetetaEditor modelId={modelId} poateEdita={poateEdita} utilizator={utilizator} />
       </div>
     </div>
   )

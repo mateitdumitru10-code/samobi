@@ -12,7 +12,7 @@ import {
   schemaValidareFormula,
   type RezultatValidareFormula,
 } from '@samobi/shared/scheme'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -42,12 +42,30 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
     const [parinte] = await db.select().from(model).where(eq(model.id, modelId)).limit(1)
     if (parinte === undefined) throw new NuExista('Modelul nu există.')
 
-    let [reteta] = await db
+    // The version being worked on: the draft if there is one, otherwise the
+    // active one, otherwise whatever is newest. Returning the oldest version
+    // meant the editor opened on an archived recipe once versions existed.
+    const { versiuneId } = z
+      .object({ versiuneId: z.string().uuid().optional() })
+      .parse(cerere.query)
+
+    const toate = await db
       .select()
       .from(recipe)
       .where(eq(recipe.modelId, modelId))
-      .orderBy(asc(recipe.versiune))
-      .limit(1)
+      .orderBy(desc(recipe.versiune))
+
+    let reteta =
+      versiuneId === undefined
+        ? (toate.find((r) => r.status === 'draft') ??
+          toate.find((r) => r.status === 'in_aprobare') ??
+          toate.find((r) => r.status === 'activa') ??
+          toate[0])
+        : toate.find((r) => r.id === versiuneId)
+
+    if (versiuneId !== undefined && reteta === undefined) {
+      throw new NuExista('Versiunea cerută nu există pentru acest model.')
+    }
 
     if (reteta === undefined) {
       const utilizator = utilizatorul(cerere)
