@@ -11,6 +11,10 @@ export type Actiune =
   | 'schimbare_rol'
   | 'dezactivare_cont'
   | 'reactivare_cont'
+  | 'creare'
+  | 'modificare'
+  | 'dezactivare'
+  | 'import_nomenclator'
 
 export interface IntrareAudit {
   userId?: string | null

@@ -47,6 +47,18 @@ export class Conflict extends EroareApi {
   }
 }
 
+/**
+ * The Postgres SQLSTATE behind an error, wherever the driver put it.
+ * Drizzle wraps the driver's error, so the code is one level down as often as not.
+ */
+export function codPostgres(err: unknown): string | null {
+  const direct = (err as { code?: unknown }).code
+  if (typeof direct === 'string') return direct
+  const cauza = (err as { cause?: { code?: unknown } }).cause
+  if (typeof cauza?.code === 'string') return cauza.code
+  return null
+}
+
 export function inregistreazaTratareErori(app: FastifyInstance) {
   app.setErrorHandler((err, cerere, raspuns) => {
     if (err instanceof ZodError) {

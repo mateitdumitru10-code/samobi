@@ -4,6 +4,7 @@ import { Activare } from './ecrane/Activare.js'
 import { Conturi } from './ecrane/Conturi.js'
 import { Nomenclator } from './ecrane/Nomenclator.js'
 import { Login } from './ecrane/Login.js'
+import { Modele } from './ecrane/Modele.js'
 import { deconecteaza, useSesiuneSupabase, useUtilizator } from './lib/sesiune.js'
 
 /**
@@ -50,7 +51,10 @@ interface Sectiune {
 
 /** Only what the role can actually open; a hidden tab is not a permission. */
 function sectiuniPentru(rol: string): Sectiune[] {
-  const sectiuni: Sectiune[] = [{ cheie: 'nomenclator', eticheta: 'Nomenclator' }]
+  const sectiuni: Sectiune[] = [
+    { cheie: 'modele', eticheta: 'Modele și rețete' },
+    { cheie: 'nomenclator', eticheta: 'Nomenclator' },
+  ]
   if (rol === 'admin') sectiuni.push({ cheie: 'conturi', eticheta: 'Conturi' })
   return sectiuni
 }
@@ -84,7 +88,7 @@ export function App() {
     indexDiez < 0 ? '' : (ruta.slice(indexDiez + 1).replace(/^\//, '').split('?')[0] ?? '')
   const sectiuneCurenta = sectiuni.some((s) => s.cheie === cerut)
     ? cerut
-    : (sectiuni[0]?.cheie ?? 'nomenclator')
+    : (sectiuni[0]?.cheie ?? 'modele')
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -129,6 +133,7 @@ export function App() {
 
       <main className="mx-auto max-w-5xl px-6 py-8">
         {sectiuneCurenta === 'conturi' && eu.rol === 'admin' && <Conturi utilizator={eu} />}
+        {sectiuneCurenta === 'modele' && <Modele utilizator={eu} />}
         {sectiuneCurenta === 'nomenclator' && <Nomenclator utilizator={eu} />}
       </main>
     </div>

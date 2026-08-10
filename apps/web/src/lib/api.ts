@@ -15,7 +15,7 @@ export class EroareApi extends Error {
 }
 
 interface Optiuni {
-  metoda?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  metoda?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   corp?: unknown
   /** Login is the one call made before a session exists. */
   faraToken?: boolean
