@@ -1,8 +1,20 @@
 import type { UtilizatorCurent } from '@samobi/shared/scheme'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { apel, EroareApi } from '../lib/api.js'
+import { CautaArticol, type ArticolGasit } from '../ui/CautaArticol.js'
+import { useNotificari } from '../ui/Notificari.js'
+import { cant, dataRo, normalizeazaZecimala } from '../ui/numere.js'
+import {
+  BannerEroare,
+  Confirma,
+  Gol,
+  Insigna,
+  RanduriSchelet,
+  RandStare,
+  mesajEroare,
+} from '../ui/stari.js'
 
 interface RandModel {
   id: string
@@ -49,13 +61,31 @@ interface RandBon {
   denumireProdus: string | null
 }
 
-interface Articol {
+interface LinieBon {
   codSaga: string
-  denumire: string
+  denumire: string | null
   um: string
+  cantitateNeta: string
+  cantitateBruta: string
+  sursa: string
+  gestiuneDescarcare: string | null
 }
 
-const AZI = new Date().toISOString().slice(0, 10)
+const ETICHETE_STATUS: Record<string, { text: string; fel: 'succes' | 'info' | 'neutru' }> = {
+  calculat: { text: 'De exportat', fel: 'info' },
+  draft: { text: 'Draft', fel: 'neutru' },
+  exportat: { text: 'Exportat', fel: 'succes' },
+  anulat: { text: 'Anulat', fel: 'neutru' },
+}
+
+const ETICHETE_SURSA: Record<string, string> = {
+  fixa: 'fixă',
+  formula: 'formulă',
+  tabel: 'tabel',
+  override: 'fixată manual',
+}
+
+const GESTIUNE_IMPLICITA = 'MATERII PRIME'
 
 export function Bonuri({ utilizator }: { utilizator: UtilizatorCurent }) {
   const poateEmite = utilizator.rol !== 'contabil'
@@ -64,20 +94,27 @@ export function Bonuri({ utilizator }: { utilizator: UtilizatorCurent }) {
   return (
     <section className="space-y-8">
       {poateEmite && <BonNou />}
-      <ListaBonuri poateExporta={poateExporta} />
+      <ListaBonuri poateExporta={poateExporta} poateAnula={poateEmite} />
     </section>
   )
 }
 
 function BonNou() {
   const queryClient = useQueryClient()
+  const notificari = useNotificari()
   const [modelId, setModelId] = useState('')
   const [dimensiuneId, setDimensiuneId] = useState('')
   const [cantitate, setCantitate] = useState('1')
-  const [data, setData] = useState(AZI)
+  // Computed on mount, not at module load: a tab left open overnight used to
+  // propose yesterday.
+  const [data, setData] = useState(() => new Date().toISOString().slice(0, 10))
   const [nrDoc, setNrDoc] = useState('')
-  const [gestiuneProdus, setGestiuneProdus] = useState('MATERII PRIME')
-  const [alegeri, setAlegeri] = useState<Record<string, string>>({})
+  const [gestiuneProdus, setGestiuneProdus] = useState(
+    () => localStorage.getItem('samobi:gestiune-produs') ?? GESTIUNE_IMPLICITA,
+  )
+  const [alegeri, setAlegeri] = useState<Record<string, ArticolGasit>>({})
+  const [salvat, setSalvat] = useState<{ cantitate: string; linii: Consum[] } | null>(null)
+  const refCantitate = useRef<HTMLInputElement>(null)
 
   const modele = useQuery({
     queryKey: ['modele'],
@@ -93,6 +130,12 @@ function BonNou() {
     enabled: modelId !== '',
   })
 
+  const gestiuni = useQuery({
+    queryKey: ['nomenclator-filtre'],
+    queryFn: () => apel<{ categorii: string[]; gestiuni: string[] }>('/nomenclator/filtre'),
+    staleTime: 10 * 60_000,
+  })
+
   // Choosing another model invalidates the dimension and every material picked.
   useEffect(() => {
     setDimensiuneId('')
@@ -101,14 +144,20 @@ function BonNou() {
 
   const dimensiune = context.data?.dimensiuni.find((d) => d.id === dimensiuneId)
   const liniiVariabile = context.data?.liniiVariabile ?? []
-  const toateAlese = liniiVariabile.every((l) => (alegeri[l.id] ?? '') !== '')
+  const toateAlese = liniiVariabile.every((l) => alegeri[l.id] !== undefined)
+
+  const cantitateCurata = normalizeazaZecimala(cantitate)
+  const cantitateInvalida = cantitate.trim() !== '' && cantitateCurata === null
+
+  const corp = () => ({
+    modelId,
+    dimensiuneId,
+    cantitate: cantitateCurata ?? '',
+    alegeri: Object.fromEntries(Object.entries(alegeri).map(([k, a]) => [k, a.codSaga])),
+  })
 
   const previzualizare = useMutation({
-    mutationFn: () =>
-      apel<{ linii: Consum[] }>('/bonuri/previzualizare', {
-        metoda: 'POST',
-        corp: { modelId, dimensiuneId, cantitate, alegeri },
-      }),
+    mutationFn: () => apel<{ linii: Consum[] }>('/bonuri/previzualizare', { metoda: 'POST', corp: corp() }),
   })
 
   const salveaza = useMutation({
@@ -116,213 +165,331 @@ function BonNou() {
       apel('/bonuri', {
         metoda: 'POST',
         corp: {
-          modelId,
-          dimensiuneId,
-          cantitate,
+          ...corp(),
           data,
           nrDoc: nrDoc === '' ? null : nrDoc,
           gestiuneProdus,
-          alegeri,
         },
       }),
     onSuccess: async () => {
+      localStorage.setItem('samobi:gestiune-produs', gestiuneProdus)
+      // Kept on screen rather than wiped: „ce am băgat adineauri?" is the first
+      // question after every save, and the answer used to vanish with the click.
+      setSalvat({ cantitate: cantitateCurata ?? '', linii: previzualizare.data?.linii ?? [] })
       previzualizare.reset()
+      notificari.succes('Bonul a fost salvat. Îl găsești mai jos, gata de export.')
       await queryClient.invalidateQueries({ queryKey: ['bonuri'] })
+      refCantitate.current?.select()
     },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
   })
 
-  const gata = modelId !== '' && dimensiuneId !== '' && toateAlese && cantitate !== ''
+  const gata =
+    modelId !== '' &&
+    dimensiuneId !== '' &&
+    toateAlese &&
+    cantitateCurata !== null &&
+    dimensiune?.codSagaProdus != null
+
+  /**
+   * Anything that changes the numbers invalidates the preview.
+   *
+   * Without this the table on screen could show the consumption for one unit
+   * while the save sent ten — the user was confirming figures that were not the
+   * ones being written.
+   */
+  const reset = previzualizare.reset
+  useEffect(() => {
+    reset()
+    setSalvat(null)
+  }, [reset, cantitate, dimensiuneId, alegeri])
+
+  function trimite(eveniment: FormEvent) {
+    eveniment.preventDefault()
+    if (!gata) return
+    if (previzualizare.isSuccess) salveaza.mutate()
+    else previzualizare.mutate()
+  }
+
+  const liniiAfisate = previzualizare.data?.linii ?? salvat?.linii ?? []
+  const modelAles = modele.data?.find((m) => m.id === modelId)
 
   return (
-    <div className="space-y-4 rounded-lg border border-neutral-200 bg-white p-5">
-      <h2 className="text-sm font-semibold text-neutral-900">Bon de predare nou</h2>
+    <form onSubmit={trimite} className="card space-y-5 p-5">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Bon de predare nou</h2>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Enter previzualizează consumurile; încă un Enter salvează bonul.
+        </p>
+      </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Model</span>
+      {modele.isError && <BannerEroare eroare={modele.error} onReincearca={() => void modele.refetch()} />}
+
+      <div className="flex flex-wrap items-start gap-3">
+        <div>
+          <label htmlFor="model" className="eticheta">
+            Model
+          </label>
           <select
+            id="model"
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
-            className="w-64 rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            className="camp w-64"
           >
-            <option value="">alege…</option>
+            <option value="">{modele.isLoading ? 'se încarcă…' : 'alege…'}</option>
             {modele.data?.map((m) => (
               <option key={m.id} value={m.id} disabled={m.nrDimensiuni === 0}>
                 {m.denumire} {m.nrDimensiuni === 0 ? '(fără dimensiuni)' : ''}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Dimensiune</span>
+        <div>
+          <label htmlFor="dimensiune" className="eticheta">
+            Dimensiune
+          </label>
           <select
+            id="dimensiune"
             value={dimensiuneId}
             disabled={modelId === ''}
             onChange={(e) => setDimensiuneId(e.target.value)}
-            className="w-44 rounded-md border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-50"
+            className="camp w-44"
           >
-            <option value="">alege…</option>
+            <option value="">{context.isFetching ? 'se încarcă…' : 'alege…'}</option>
             {context.data?.dimensiuni.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.cod}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Cantitate</span>
+        <div>
+          <label htmlFor="cantitate" className="eticheta">
+            Cantitate
+          </label>
+          {/*
+            Deliberately not `type="number"`: a scroll wheel over a focused
+            number input silently changes the value, and this one ends up in
+            SAGA. Decimals are normalised in code instead.
+          */}
           <input
+            id="cantitate"
+            ref={refCantitate}
             value={cantitate}
+            inputMode="decimal"
+            aria-invalid={cantitateInvalida}
             onChange={(e) => setCantitate(e.target.value)}
-            className="w-24 rounded-md border border-neutral-300 px-3 py-2 text-right text-sm tabular-nums"
+            className="camp w-24 text-right tabular-nums"
           />
-        </label>
+          {cantitateInvalida && <p className="indiciu text-danger">Ex.: 1 sau 1,5</p>}
+        </div>
 
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Data</span>
+        <div>
+          <label htmlFor="data" className="eticheta">
+            Data
+          </label>
           <input
+            id="data"
             type="date"
             value={data}
             onChange={(e) => setData(e.target.value)}
-            className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            className="camp"
           />
-        </label>
+        </div>
 
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Nr. document</span>
+        <div>
+          <label htmlFor="nrdoc" className="eticheta">
+            Nr. document
+          </label>
           <input
+            id="nrdoc"
             value={nrDoc}
             onChange={(e) => setNrDoc(e.target.value)}
             placeholder="opțional"
-            className="w-32 rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            className="camp w-32"
           />
-        </label>
+        </div>
 
-        <label className="space-y-1">
-          <span className="block text-xs font-medium text-neutral-600">Gestiune produs</span>
+        <div>
+          <label htmlFor="gestiune" className="eticheta">
+            Gestiune produs
+          </label>
           <input
+            id="gestiune"
+            list="gestiuni"
             value={gestiuneProdus}
             onChange={(e) => setGestiuneProdus(e.target.value)}
-            className="w-44 rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            className="camp w-48"
           />
-        </label>
+          <datalist id="gestiuni">
+            {(gestiuni.data?.gestiuni ?? [GESTIUNE_IMPLICITA]).map((g) => (
+              <option key={g} value={g} />
+            ))}
+          </datalist>
+        </div>
       </div>
 
       {dimensiune !== undefined && dimensiune.codSagaProdus === null && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p className="rounded-lg border border-atentie-border bg-atentie-bg px-3 py-2 text-sm text-atentie">
           Dimensiunea {dimensiune.cod} nu are cod de produs finit în SAGA. Leagă-l la „Modele și
           rețete" înainte de a emite bonul.
         </p>
       )}
 
       {liniiVariabile.length > 0 && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-4">
-          <h3 className="text-sm font-semibold text-blue-900">Materiale de ales</h3>
-          <p className="mt-1 text-sm text-blue-800">
-            Rețeta dă metrajul; codul concret se alege acum. Același model în altă stofă
-            folosește aceeași rețetă.
+        <div className="rounded-lg border border-info-border bg-info-bg p-4">
+          <h3 className="text-sm font-semibold text-info">
+            Materiale de ales ({liniiVariabile.filter((l) => alegeri[l.id] !== undefined).length}/
+            {liniiVariabile.length})
+          </h3>
+          <p className="mt-1 text-sm text-ink-secondary">
+            Rețeta dă metrajul; codul concret se alege acum. Același model în altă stofă folosește
+            aceeași rețetă.
           </p>
           <ul className="mt-3 space-y-2">
-            {liniiVariabile.map((linie) => (
-              <li key={linie.id} className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-neutral-700">
-                  linia {linie.nrLinie} · {linie.grup} · {linie.um}
-                </span>
-                <CautaArticol
-                  categorie={linie.categorieVariabila}
-                  valoare={alegeri[linie.id] ?? ''}
-                  onAlege={(cod) => setAlegeri((a) => ({ ...a, [linie.id]: cod }))}
-                />
-              </li>
-            ))}
+            {liniiVariabile.map((linie) => {
+              const ales = alegeri[linie.id]
+              return (
+                <li key={linie.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="w-52 shrink-0 text-ink-secondary">
+                    linia {linie.nrLinie} · {linie.grup} · {linie.um}
+                  </span>
+                  {ales === undefined ? (
+                    <CautaArticol
+                      umAsteptat={linie.um}
+                      onAlege={(a) => setAlegeri((curente) => ({ ...curente, [linie.id]: a }))}
+                      placeholder={
+                        linie.categorieVariabila === null
+                          ? 'caută material…'
+                          : `caută în ${linie.categorieVariabila}…`
+                      }
+                    />
+                  ) : (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-surface px-2 py-1 font-mono text-xs">
+                        {ales.codSaga}
+                      </span>
+                      <span className="text-ink">{ales.denumire}</span>
+                      <span className="text-xs text-ink-muted">({ales.um})</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAlegeri((curente) =>
+                            Object.fromEntries(
+                              Object.entries(curente).filter(([cheie]) => cheie !== linie.id),
+                            ),
+                          )
+                        }
+                        className="text-xs text-brand underline underline-offset-2"
+                      >
+                        schimbă
+                      </button>
+                    </span>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
-          type="button"
-          disabled={!gata || previzualizare.isPending}
-          onClick={() => previzualizare.mutate()}
-          className="rounded-md border border-neutral-300 px-4 py-2 text-sm disabled:opacity-40"
+          type="submit"
+          disabled={!gata || previzualizare.isPending || salveaza.isPending}
+          className={previzualizare.isSuccess ? 'buton buton-primar' : 'buton buton-secundar'}
         >
-          {previzualizare.isPending ? 'Se calculează…' : 'Previzualizează consumurile'}
+          {previzualizare.isPending
+            ? 'Se calculează…'
+            : salveaza.isPending
+              ? 'Se salvează…'
+              : previzualizare.isSuccess
+                ? 'Salvează bonul'
+                : 'Previzualizează consumurile'}
         </button>
-        <button
-          type="button"
-          disabled={!gata || !previzualizare.isSuccess || salveaza.isPending}
-          onClick={() => salveaza.mutate()}
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-        >
-          {salveaza.isPending ? 'Se salvează…' : 'Salvează bonul'}
-        </button>
+        {previzualizare.isSuccess && (
+          <button
+            type="button"
+            onClick={() => previzualizare.mutate()}
+            className="buton buton-discret buton-mic"
+          >
+            Recalculează
+          </button>
+        )}
       </div>
 
       {previzualizare.isError && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {(previzualizare.error as EroareApi).message}
-        </p>
-      )}
-      {salveaza.isError && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {(salveaza.error as EroareApi).message}
-        </p>
-      )}
-      {salveaza.isSuccess && (
-        <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
-          Bonul a fost salvat. Îl găsești mai jos, gata de export.
-        </p>
+        <BannerEroare eroare={previzualizare.error} titlu="Calculul a eșuat." />
       )}
 
-      {previzualizare.data !== undefined && (
-        <TabelConsumuri linii={previzualizare.data.linii} />
+      {liniiAfisate.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm text-ink-secondary">
+            {salvat !== null ? 'Consumuri salvate' : 'Consumuri'} pentru{' '}
+            <strong className="text-ink">
+              {cant(salvat?.cantitate ?? cantitateCurata)} buc · {modelAles?.denumire}{' '}
+              {dimensiune?.cod}
+            </strong>
+          </p>
+          <TabelConsumuri linii={liniiAfisate} />
+        </div>
       )}
-    </div>
+    </form>
   )
 }
 
 function TabelConsumuri({ linii }: { linii: Consum[] }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-neutral-200">
-      <table className="w-full text-sm">
-        <thead className="border-b border-neutral-200 bg-neutral-50 text-left text-xs uppercase text-neutral-500">
+    <div className="overflow-x-auto rounded-lg border border-line">
+      <table className="w-full text-sm" aria-label="Consumuri de material">
+        <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
           <tr>
-            <th className="px-4 py-2 font-medium">Cod</th>
-            <th className="px-4 py-2 font-medium">Denumire</th>
-            <th className="px-4 py-2 font-medium">UM</th>
-            <th className="px-4 py-2 text-right font-medium">Net</th>
-            <th className="px-4 py-2 text-right font-medium">Brut</th>
-            <th className="px-4 py-2 text-right font-medium">În fișier</th>
-            <th className="px-4 py-2 font-medium">Sursă</th>
+            <th scope="col" className="px-4 py-2 font-medium">
+              Cod
+            </th>
+            <th scope="col" className="px-4 py-2 font-medium">
+              Denumire
+            </th>
+            <th scope="col" className="px-4 py-2 font-medium">
+              UM
+            </th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">
+              Net
+            </th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">
+              Brut
+            </th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">
+              În fișier
+            </th>
+            <th scope="col" className="px-4 py-2 font-medium">
+              Sursă
+            </th>
           </tr>
         </thead>
         <tbody>
           {linii.map((linie) => (
-            <tr key={linie.codSaga} className="border-b border-neutral-100 last:border-0">
+            <tr key={linie.codSaga} className="border-t border-line hover:bg-surface-page">
               <td className="px-4 py-2 font-mono text-xs">{linie.codSaga}</td>
               <td className="px-4 py-2">{linie.denumire}</td>
-              <td className="px-4 py-2 text-neutral-600">{linie.um}</td>
-              <td className="px-4 py-2 text-right tabular-nums text-neutral-500">
-                {linie.cantitateNeta}
+              <td className="px-4 py-2 text-ink-muted">{linie.um}</td>
+              <td className="px-4 py-2 text-right tabular-nums text-ink-muted">
+                {cant(linie.cantitateNeta)}
               </td>
-              <td className="px-4 py-2 text-right tabular-nums text-neutral-500">
-                {linie.cantitateBruta}
+              <td className="px-4 py-2 text-right tabular-nums text-ink-muted">
+                {cant(linie.cantitateBruta)}
               </td>
               <td className="px-4 py-2 text-right font-medium tabular-nums">
-                {linie.cantitateBrutaRotunjita}
+                {cant(linie.cantitateBrutaRotunjita)}
               </td>
-              <td className="px-4 py-2">
-                <span
-                  className={
-                    linie.sursa === 'override'
-                      ? 'rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800'
-                      : 'text-xs text-neutral-500'
-                  }
-                >
-                  {linie.sursa}
-                </span>
+              <td className="px-4 py-2 text-xs">
+                {linie.sursa === 'override' ? (
+                  <Insigna fel="atentie">fixată manual</Insigna>
+                ) : (
+                  <span className="text-ink-muted">{ETICHETE_SURSA[linie.sursa] ?? linie.sursa}</span>
+                )}
               </td>
             </tr>
           ))}
@@ -332,137 +499,111 @@ function TabelConsumuri({ linii }: { linii: Consum[] }) {
   )
 }
 
-/** Type-ahead over 21.600 articles; the list only loads once there is a query. */
-function CautaArticol({
-  categorie,
-  valoare,
-  onAlege,
+type Filtru = 'de-exportat' | 'exportat' | 'anulat' | 'toate'
+
+const FILTRE: { cheie: Filtru; eticheta: string; status?: string }[] = [
+  { cheie: 'de-exportat', eticheta: 'De exportat', status: 'calculat' },
+  { cheie: 'exportat', eticheta: 'Exportate', status: 'exportat' },
+  { cheie: 'anulat', eticheta: 'Anulate', status: 'anulat' },
+  { cheie: 'toate', eticheta: 'Toate' },
+]
+
+function ListaBonuri({
+  poateExporta,
+  poateAnula,
 }: {
-  categorie: string | null
-  valoare: string
-  onAlege: (cod: string) => void
+  poateExporta: boolean
+  poateAnula: boolean
 }) {
-  const [text, setText] = useState('')
-  const [amanat, setAmanat] = useState('')
-
-  useEffect(() => {
-    const cronometru = setTimeout(() => setAmanat(text), 300)
-    return () => clearTimeout(cronometru)
-  }, [text])
-
-  const rezultate = useQuery({
-    queryKey: ['cauta-articol', amanat, categorie],
-    queryFn: () => {
-      // Deliberately not filtered by category: `grupa` is empty in every row of
-      // the SAGA export, so every article has a null category and the filter
-      // would return nothing at all. The category stays a hint in the
-      // placeholder until somebody fills those in.
-      const parametri = new URLSearchParams({
-        cauta: amanat,
-        tip: 'materie_prima',
-        pePagina: '10',
-      })
-      return apel<{ articole: Articol[] }>(`/nomenclator?${parametri.toString()}`)
-    },
-    enabled: amanat.trim().length >= 2 && valoare === '',
-  })
-
-  if (valoare !== '') {
-    return (
-      <span className="flex items-center gap-2">
-        <span className="rounded bg-white px-2 py-1 font-mono text-xs">{valoare}</span>
-        <button
-          type="button"
-          onClick={() => {
-            onAlege('')
-            setText('')
-          }}
-          className="text-xs text-blue-700 underline"
-        >
-          schimbă
-        </button>
-      </span>
-    )
-  }
-
-  return (
-    <span className="relative">
-      <input
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={categorie === null ? 'caută material…' : `caută în ${categorie}…`}
-        className="w-64 rounded-md border border-neutral-300 px-2 py-1 text-sm"
-      />
-      {(rezultate.data?.articole.length ?? 0) > 0 && (
-        <ul className="absolute z-10 mt-1 max-h-56 w-80 overflow-y-auto rounded-md border border-neutral-200 bg-white shadow-lg">
-          {rezultate.data?.articole.map((a) => (
-            <li key={a.codSaga}>
-              <button
-                type="button"
-                onClick={() => onAlege(a.codSaga)}
-                className="w-full px-3 py-2 text-left text-sm hover:bg-neutral-50"
-              >
-                <span className="font-mono text-xs text-neutral-500">{a.codSaga}</span>{' '}
-                {a.denumire}{' '}
-                {a.um.trim() === '' ? (
-                  // Shown rather than hidden: the unit comes from the recipe, and
-                  // hiding these would remove real fabrics from the picker.
-                  <span className="text-xs text-amber-700">(fără UM în SAGA)</span>
-                ) : (
-                  <span className="text-xs text-neutral-400">({a.um})</span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </span>
-  )
-}
-
-function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
   const queryClient = useQueryClient()
+  const notificari = useNotificari()
+  const [filtru, setFiltru] = useState<Filtru>('de-exportat')
   const [selectate, setSelectate] = useState<string[]>([])
-  const [confirmaReexport, setConfirmaReexport] = useState(false)
+  const [desfasurat, setDesfasurat] = useState<string | null>(null)
+  const [ultimulExport, setUltimulExport] = useState<{
+    id: string
+    nrBonuri: number
+    nrLinii: number
+  } | null>(null)
+
+  const status = FILTRE.find((f) => f.cheie === filtru)?.status
 
   const bonuri = useQuery({
-    queryKey: ['bonuri'],
-    queryFn: () => apel<RandBon[]>('/bonuri'),
+    queryKey: ['bonuri', status ?? 'toate'],
+    queryFn: () => apel<RandBon[]>(`/bonuri${status === undefined ? '' : `?status=${status}`}`),
   })
 
+  /** The signed link, fetched apart from the export so a failed download is not a failed export. */
+  async function descarca(id: string) {
+    const { url } = await apel<{ url: string }>(`/export/${id}/descarcare`)
+    const legatura = document.createElement('a')
+    legatura.href = url
+    legatura.download = ''
+    document.body.append(legatura)
+    legatura.click()
+    legatura.remove()
+  }
+
   const exporta = useMutation({
-    mutationFn: () =>
+    mutationFn: (confirmaReexport: boolean) =>
       apel<{ id: string; nrLinii: number; nrBonuri: number }>('/export', {
         metoda: 'POST',
         corp: { bonIds: selectate, confirmaReexport },
       }),
     onSuccess: async (lot) => {
       setSelectate([])
-      setConfirmaReexport(false)
+      setUltimulExport(lot)
       await queryClient.invalidateQueries({ queryKey: ['bonuri'] })
-      const { url } = await apel<{ url: string }>(`/export/${lot.id}/descarcare`)
-      window.location.assign(url)
+      try {
+        await descarca(lot.id)
+      } catch (e) {
+        // The export exists on the server either way; only the file is missing,
+        // and re-exporting to get it would double-book the consumption.
+        notificari.eroare(
+          `Exportul s-a generat, dar fișierul nu s-a descărcat. ${mesajEroare(e)} Folosește „Descarcă din nou".`,
+        )
+      }
+    },
+    onError: (e) => {
+      if (!(e instanceof EroareApi && e.status === 409)) notificari.eroare(mesajEroare(e))
     },
   })
 
+  const anuleaza = useMutation({
+    mutationFn: (id: string) => apel(`/bonuri/${id}/anulare`, { metoda: 'POST' }),
+    onSuccess: async () => {
+      notificari.succes('Bonul a fost anulat.')
+      await queryClient.invalidateQueries({ queryKey: ['bonuri'] })
+    },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
+  })
+
   function comuta(id: string) {
+    // A „yes, send them again" ticked for one selection must not authorise the
+    // next one; the reset lives here because this is where the selection changes.
+    exporta.reset()
     setSelectate((curente) =>
       curente.includes(id) ? curente.filter((x) => x !== id) : [...curente, id],
     )
   }
 
+  const randuri = bonuri.data ?? []
+  const selectabile = randuri.filter((b) => b.status === 'calculat' || filtru === 'exportat')
+  const toateSelectate = selectabile.length > 0 && selectate.length === selectabile.length
+
   const conflict = exporta.error instanceof EroareApi && exporta.error.status === 409
+  const nrColoane = 8
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-neutral-900">Bonuri</h2>
+        <h2 className="text-lg font-semibold text-ink">Bonuri</h2>
         {poateExporta && (
           <button
             type="button"
             disabled={selectate.length === 0 || exporta.isPending}
-            onClick={() => exporta.mutate()}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+            onClick={() => exporta.mutate(false)}
+            className="buton buton-primar"
           >
             {exporta.isPending
               ? 'Se generează…'
@@ -471,81 +612,286 @@ function ListaBonuri({ poateExporta }: { poateExporta: boolean }) {
         )}
       </div>
 
-      {exporta.isError && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
-          <p className="text-amber-900">{(exporta.error as EroareApi).message}</p>
-          {conflict && (
-            <label className="mt-2 flex items-center gap-2 text-amber-900">
-              <input
-                type="checkbox"
-                checked={confirmaReexport}
-                onChange={(e) => setConfirmaReexport(e.target.checked)}
-              />
-              Da, trimite-le din nou în SAGA.
-            </label>
-          )}
+      <div className="inline-flex rounded-lg bg-surface-sunken p-1">
+        {FILTRE.map((f) => (
+          <button
+            key={f.cheie}
+            type="button"
+            onClick={() => {
+              setFiltru(f.cheie)
+              setSelectate([])
+              exporta.reset()
+            }}
+            className={
+              filtru === f.cheie
+                ? 'rounded-md bg-surface px-3 py-1.5 text-sm font-medium text-ink shadow-[0_1px_2px_rgb(28_25_23/0.06)]'
+                : 'rounded-md px-3 py-1.5 text-sm text-ink-muted hover:text-ink'
+            }
+          >
+            {f.eticheta}
+          </button>
+        ))}
+      </div>
 
+      {ultimulExport !== null && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-succes-border bg-succes-bg px-4 py-3 text-sm">
+          <p className="flex-1 text-succes">
+            Export generat: {ultimulExport.nrBonuri} bonuri, {ultimulExport.nrLinii} linii de
+            material.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              void descarca(ultimulExport.id).catch((e: unknown) =>
+                notificari.eroare(mesajEroare(e)),
+              )
+            }}
+            className="buton buton-secundar buton-mic"
+          >
+            Descarcă din nou
+          </button>
+          <button
+            type="button"
+            onClick={() => setUltimulExport(null)}
+            className="buton buton-discret buton-mic"
+          >
+            Închide
+          </button>
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-500">
+      {conflict && (
+        <div className="rounded-lg border border-atentie-border bg-atentie-bg px-4 py-3 text-sm">
+          <p className="text-atentie">{(exporta.error as EroareApi).message}</p>
+          <p className="mt-1 text-ink-secondary">
+            Retrimiterea în SAGA înseamnă că materialul se scade a doua oară.
+          </p>
+          <button
+            type="button"
+            disabled={exporta.isPending}
+            onClick={() => exporta.mutate(true)}
+            className="buton buton-pericol buton-mic mt-2"
+          >
+            Reexportă oricum cele {selectate.length} bonuri
+          </button>
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full text-sm" aria-label="Bonuri de producție">
+          <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
             <tr>
-              <th className="w-8 px-3 py-2" />
-              <th className="px-4 py-2 font-medium">Data</th>
-              <th className="px-4 py-2 font-medium">Produs</th>
-              <th className="px-4 py-2 font-medium">Dimensiune</th>
-              <th className="px-4 py-2 text-right font-medium">Cantitate</th>
-              <th className="px-4 py-2 font-medium">Stare</th>
+              <th scope="col" className="w-10 px-3 py-2">
+                {poateExporta && selectabile.length > 0 && (
+                  <input
+                    type="checkbox"
+                    checked={toateSelectate}
+                    aria-label="Selectează toate bonurile de exportat"
+                    onChange={() => {
+                      exporta.reset()
+                      setSelectate(toateSelectate ? [] : selectabile.map((b) => b.id))
+                    }}
+                  />
+                )}
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Data
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Nr. doc
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Produs
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Dimensiune
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                Cantitate
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Stare
+              </th>
+              <th scope="col" className="px-4 py-2" />
             </tr>
           </thead>
           <tbody>
-            {bonuri.data?.map((bon) => (
-              <tr key={bon.id} className="border-b border-neutral-100 last:border-0">
-                <td className="px-3 py-2">
-                  {poateExporta && bon.status !== 'anulat' && (
-                    <input
-                      type="checkbox"
-                      checked={selectate.includes(bon.id)}
-                      onChange={() => comuta(bon.id)}
-                    />
-                  )}
-                </td>
-                <td className="px-4 py-2 text-neutral-600">{bon.data}</td>
-                <td className="px-4 py-2">
-                  {bon.modelDenumire}
-                  <span className="ml-2 font-mono text-xs text-neutral-400">
-                    {bon.codSagaProdus}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-neutral-600">{bon.dimensiuneCod}</td>
-                <td className="px-4 py-2 text-right tabular-nums">{Number(bon.cantitate)}</td>
-                <td className="px-4 py-2">
-                  <span
-                    className={
-                      bon.status === 'exportat'
-                        ? 'rounded-full bg-green-50 px-2 py-1 text-xs text-green-700'
-                        : bon.status === 'anulat'
-                          ? 'rounded-full bg-neutral-100 px-2 py-1 text-xs text-neutral-500'
-                          : 'rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700'
-                    }
-                  >
-                    {bon.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {bonuri.data?.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-neutral-500">
-                  Niciun bon încă.
-                </td>
-              </tr>
+            {bonuri.isLoading && <RanduriSchelet coloane={nrColoane} />}
+
+            {bonuri.isError && (
+              <RandStare coloane={nrColoane}>
+                <BannerEroare
+                  eroare={bonuri.error}
+                  titlu="Bonurile nu s-au putut încărca."
+                  onReincearca={() => void bonuri.refetch()}
+                />
+              </RandStare>
             )}
+
+            {!bonuri.isLoading && !bonuri.isError && randuri.length === 0 && (
+              <RandStare coloane={nrColoane}>
+                <Gol
+                  titlu={filtru === 'de-exportat' ? 'Nimic de exportat' : 'Niciun bon aici'}
+                  indiciu={
+                    filtru === 'de-exportat'
+                      ? 'Bonurile salvate apar aici până pleacă în SAGA.'
+                      : undefined
+                  }
+                />
+              </RandStare>
+            )}
+
+            {randuri.map((bon) => {
+              const stare = ETICHETE_STATUS[bon.status] ?? { text: bon.status, fel: 'neutru' as const }
+              const bifabil = poateExporta && (bon.status === 'calculat' || filtru === 'exportat')
+              return (
+                <RandBonuri
+                  key={bon.id}
+                  bon={bon}
+                  stare={stare}
+                  bifabil={bifabil}
+                  bifat={selectate.includes(bon.id)}
+                  onComuta={() => comuta(bon.id)}
+                  desfasurat={desfasurat === bon.id}
+                  onDesfasoara={() => setDesfasurat((d) => (d === bon.id ? null : bon.id))}
+                  poateAnula={poateAnula && bon.status !== 'exportat' && bon.status !== 'anulat'}
+                  onAnuleaza={() => anuleaza.mutate(bon.id)}
+                  coloane={nrColoane}
+                />
+              )
+            })}
           </tbody>
         </table>
       </div>
+
+      {randuri.length === 200 && (
+        <p className="text-xs text-ink-muted">
+          Se afișează ultimele 200 de bonuri. Filtrează ca să vezi restul.
+        </p>
+      )}
     </div>
+  )
+}
+
+function RandBonuri({
+  bon,
+  stare,
+  bifabil,
+  bifat,
+  onComuta,
+  desfasurat,
+  onDesfasoara,
+  poateAnula,
+  onAnuleaza,
+  coloane,
+}: {
+  bon: RandBon
+  stare: { text: string; fel: 'succes' | 'info' | 'neutru' }
+  bifabil: boolean
+  bifat: boolean
+  onComuta: () => void
+  desfasurat: boolean
+  onDesfasoara: () => void
+  poateAnula: boolean
+  onAnuleaza: () => void
+  coloane: number
+}) {
+  const detaliu = useQuery({
+    queryKey: ['bon', bon.id],
+    queryFn: () => apel<{ linii: LinieBon[] }>(`/bonuri/${bon.id}`),
+    enabled: desfasurat,
+  })
+
+  return (
+    <>
+      <tr
+        className={`border-t border-line ${bon.status === 'anulat' ? 'text-ink-muted' : ''} hover:bg-surface-page`}
+      >
+        <td className="px-3 py-2">
+          {bifabil && (
+            <input
+              type="checkbox"
+              checked={bifat}
+              onChange={onComuta}
+              aria-label={`Selectează bonul din ${dataRo(bon.data)}`}
+            />
+          )}
+        </td>
+        <td className="px-4 py-2 whitespace-nowrap text-ink-secondary">{dataRo(bon.data)}</td>
+        <td className="px-4 py-2 text-ink-muted">{bon.nrDoc ?? '—'}</td>
+        <td className="px-4 py-2">
+          <button type="button" onClick={onDesfasoara} className="text-left hover:underline">
+            {bon.modelDenumire}
+            <span className="ml-2 font-mono text-xs text-ink-muted">{bon.codSagaProdus}</span>
+          </button>
+        </td>
+        <td className="px-4 py-2 text-ink-secondary">{bon.dimensiuneCod}</td>
+        <td className="px-4 py-2 text-right tabular-nums">{cant(bon.cantitate)}</td>
+        <td className="px-4 py-2">
+          <Insigna fel={stare.fel}>{stare.text}</Insigna>
+        </td>
+        <td className="px-4 py-2 text-right">
+          {poateAnula && (
+            <Confirma
+              eticheta="Anulează"
+              intrebare={`Anulezi bonul din ${dataRo(bon.data)}, ${bon.modelDenumire} × ${cant(bon.cantitate)}?`}
+              confirmare="Da, anulează"
+              onConfirma={onAnuleaza}
+            />
+          )}
+        </td>
+      </tr>
+
+      {desfasurat && (
+        <tr className="border-t border-line bg-surface-page">
+          <td colSpan={coloane} className="px-4 py-3">
+            {detaliu.isLoading && <p className="text-sm text-ink-muted">Se încarcă liniile…</p>}
+            {detaliu.isError && <BannerEroare eroare={detaliu.error} />}
+            {detaliu.data !== undefined && (
+              <table className="w-full text-sm" aria-label="Liniile bonului">
+                <thead className="text-left text-xs uppercase text-ink-muted">
+                  <tr>
+                    <th scope="col" className="py-1 font-medium">
+                      Cod
+                    </th>
+                    <th scope="col" className="py-1 font-medium">
+                      Denumire
+                    </th>
+                    <th scope="col" className="py-1 font-medium">
+                      UM
+                    </th>
+                    <th scope="col" className="py-1 text-right font-medium">
+                      Net
+                    </th>
+                    <th scope="col" className="py-1 text-right font-medium">
+                      Brut
+                    </th>
+                    <th scope="col" className="py-1 font-medium">
+                      Sursă
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detaliu.data.linii.map((l) => (
+                    <tr key={l.codSaga} className="border-t border-line">
+                      <td className="py-1 font-mono text-xs">{l.codSaga}</td>
+                      <td className="py-1">{l.denumire ?? '—'}</td>
+                      <td className="py-1 text-ink-muted">{l.um}</td>
+                      <td className="py-1 text-right tabular-nums text-ink-muted">
+                        {cant(l.cantitateNeta)}
+                      </td>
+                      <td className="py-1 text-right tabular-nums">{cant(l.cantitateBruta)}</td>
+                      <td className="py-1 text-xs text-ink-muted">
+                        {ETICHETE_SURSA[l.sursa] ?? l.sursa}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   )
 }

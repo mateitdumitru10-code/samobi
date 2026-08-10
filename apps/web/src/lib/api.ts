@@ -49,6 +49,7 @@ export async function apel<T>(cale: string, optiuni: Optiuni = {}): Promise<T> {
 
   if (!raspuns.ok) {
     const eroare = continut as { cod?: string; mesaj?: string; detalii?: never }
+    if (raspuns.status === 401) await sesiuneaAExpirat()
     throw new EroareApi(
       raspuns.status,
       eroare?.cod ?? 'EROARE',
@@ -58,6 +59,19 @@ export async function apel<T>(cale: string, optiuni: Optiuni = {}): Promise<T> {
   }
 
   return continut as T
+}
+
+/**
+ * A dead token used to surface as „Sesiunea a expirat" inside whichever panel
+ * happened to make the call, with the user still looking at an application they
+ * could no longer use. Signing out flips the app to the login screen through
+ * `onAuthStateChange`, which is the only thing that will actually help.
+ */
+async function sesiuneaAExpirat(): Promise<void> {
+  const { data } = await supabase.auth.getSession()
+  if (data.session === null) return
+  sessionStorage.setItem('samobi:sesiune-expirata', '1')
+  await supabase.auth.signOut()
 }
 
 /**
@@ -91,6 +105,7 @@ export async function incarcaFisier<T>(
 
   if (!raspuns.ok) {
     const eroare = continut as { cod?: string; mesaj?: string }
+    if (raspuns.status === 401) await sesiuneaAExpirat()
     throw new EroareApi(raspuns.status, eroare?.cod ?? 'EROARE', eroare?.mesaj ?? 'Import eșuat.')
   }
 

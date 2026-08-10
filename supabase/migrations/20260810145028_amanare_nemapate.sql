@@ -1,0 +1,1 @@
+ALTER TABLE "unmapped_material" ADD COLUMN "amanat" boolean DEFAULT false NOT NULL;

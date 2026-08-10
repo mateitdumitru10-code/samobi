@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The sofa outline from the SAMOBI mark, reduced to what survives at 16px. -->
+  <g fill="none" stroke="#C22032" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 13V9a2 2 0 0 1 2-2h20a2 2 0 0 1 2 2v4" />
+    <path d="M8 13V8.5" />
+    <path d="M24 13V8.5" />
+    <rect x="2.5" y="13" width="27" height="9" rx="2.5" />
+    <path d="M6 22v2.5" />
+    <path d="M26 22v2.5" />
+  </g>
+</svg>

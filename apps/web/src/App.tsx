@@ -7,7 +7,11 @@ import { Nomenclator } from './ecrane/Nomenclator.js'
 import { Rapoarte } from './ecrane/Rapoarte.js'
 import { Login } from './ecrane/Login.js'
 import { Modele } from './ecrane/Modele.js'
+import { EroareApi } from './lib/api.js'
 import { deconecteaza, useSesiuneSupabase, useUtilizator } from './lib/sesiune.js'
+import { ETICHETE_ROL } from './ui/roluri.js'
+import { Sigla } from './ui/Sigla.js'
+import { mesajEroare, Schelet } from './ui/stari.js'
 
 /**
  * Routing is the URL fragment, deliberately.
@@ -40,9 +44,7 @@ function useRuta() {
  */
 function esteActivare(ruta: string): boolean {
   return (
-    ruta.startsWith('/activare') ||
-    ruta.includes('type=invite') ||
-    ruta.includes('type=recovery')
+    ruta.startsWith('/activare') || ruta.includes('type=invite') || ruta.includes('type=recovery')
   )
 }
 
@@ -59,7 +61,9 @@ function sectiuniPentru(rol: string): Sectiune[] {
     { cheie: 'nomenclator', eticheta: 'Nomenclator' },
     { cheie: 'rapoarte', eticheta: 'Rapoarte' },
   ]
-  if (rol === 'admin') sectiuni.push({ cheie: 'conturi', eticheta: 'Conturi' })
+  // „Conturi" means the chart of accounts to anyone who works with SAGA. This
+  // tab is about people.
+  if (rol === 'admin') sectiuni.push({ cheie: 'utilizatori', eticheta: 'Utilizatori' })
   return sectiuni
 }
 
@@ -69,19 +73,27 @@ export function App() {
   const utilizator = useUtilizator(areSesiune)
 
   if (esteActivare(ruta)) {
-    return <Activare areSesiune={areSesiune} />
+    return <Activare gata={gata} areSesiune={areSesiune} />
   }
 
   if (!gata || (areSesiune && utilizator.isLoading)) {
-    return (
-      <main className="flex min-h-screen items-center justify-center text-sm text-neutral-500">
-        Se încarcă…
-      </main>
-    )
+    return <ScheletAplicatie />
   }
 
-  if (!areSesiune || utilizator.isError || utilizator.data === undefined) {
-    return <Login />
+  // A dead token is a logout; anything else is the API being unreachable, and
+  // showing the login form for that makes the user retype a password that was
+  // never the problem.
+  const esteNeautentificat =
+    !areSesiune ||
+    (utilizator.error instanceof EroareApi &&
+      (utilizator.error.status === 401 || utilizator.error.status === 403))
+
+  if (esteNeautentificat) return <Login />
+
+  if (utilizator.isError || utilizator.data === undefined) {
+    return (
+      <EcranEroare eroare={utilizator.error} onReincearca={() => void utilizator.refetch()} />
+    )
   }
 
   const eu = utilizator.data
@@ -95,21 +107,20 @@ export function App() {
     : (sectiuni[0]?.cheie ?? 'bonuri')
 
   return (
-    <div className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-base font-semibold text-neutral-900">Samobi</h1>
-            <p className="text-xs text-neutral-500">Rețete de producție</p>
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-neutral-600">
-              {eu.nume} <span className="text-neutral-400">· {eu.rol}</span>
+    <div className="min-h-screen bg-surface-page">
+      <header className="border-b border-line bg-surface">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
+          <h1 className="flex items-center">
+            <Sigla inaltime="h-8 sm:h-9" />
+          </h1>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="hidden text-ink-secondary sm:inline">
+              {eu.nume} <span className="text-ink-muted">· {ETICHETE_ROL[eu.rol]}</span>
             </span>
             <button
               type="button"
               onClick={() => void deconecteaza()}
-              className="rounded-md border border-neutral-300 px-3 py-1 text-xs"
+              className="buton buton-secundar buton-mic"
             >
               Ieși
             </button>
@@ -117,31 +128,85 @@ export function App() {
         </div>
       </header>
 
-      <nav className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-5xl gap-1 px-6">
-          {sectiuniPentru(eu.rol).map((sectiune) => (
-            <a
-              key={sectiune.cheie}
-              href={`#/${sectiune.cheie}`}
-              className={
-                sectiuneCurenta === sectiune.cheie
-                  ? 'border-b-2 border-neutral-900 px-3 py-2 text-sm font-medium text-neutral-900'
-                  : 'border-b-2 border-transparent px-3 py-2 text-sm text-neutral-500 hover:text-neutral-900'
-              }
-            >
-              {sectiune.eticheta}
-            </a>
-          ))}
+      <nav aria-label="Secțiuni" className="border-b border-line bg-surface">
+        <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-6">
+          {sectiuni.map((sectiune) => {
+            const activa = sectiuneCurenta === sectiune.cheie
+            return (
+              <a
+                key={sectiune.cheie}
+                href={`#/${sectiune.cheie}`}
+                aria-current={activa ? 'page' : undefined}
+                className={
+                  activa
+                    ? 'border-b-2 border-brand px-3 py-2.5 text-sm font-medium whitespace-nowrap text-ink'
+                    : 'border-b-2 border-transparent px-3 py-2.5 text-sm whitespace-nowrap text-ink-muted hover:text-ink'
+                }
+              >
+                {sectiune.eticheta}
+              </a>
+            )
+          })}
         </div>
       </nav>
 
-      <main className="mx-auto max-w-5xl px-6 py-8">
-        {sectiuneCurenta === 'conturi' && eu.rol === 'admin' && <Conturi utilizator={eu} />}
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        {sectiuneCurenta === 'utilizatori' && eu.rol === 'admin' && <Conturi utilizator={eu} />}
         {sectiuneCurenta === 'bonuri' && <Bonuri utilizator={eu} />}
         {sectiuneCurenta === 'modele' && <Modele utilizator={eu} />}
         {sectiuneCurenta === 'nomenclator' && <Nomenclator utilizator={eu} />}
         {sectiuneCurenta === 'rapoarte' && <Rapoarte utilizator={eu} />}
       </main>
     </div>
+  )
+}
+
+/** The chrome, drawn immediately, so a cold start is not a white page. */
+function ScheletAplicatie() {
+  return (
+    <div className="min-h-screen bg-surface-page">
+      <header className="border-b border-line bg-surface">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+          <Sigla inaltime="h-8 sm:h-9" />
+          <Schelet className="h-8 w-24" />
+        </div>
+      </header>
+      <div className="border-b border-line bg-surface">
+        <div className="mx-auto flex max-w-6xl gap-4 px-6 py-3">
+          <Schelet className="h-4 w-16" />
+          <Schelet className="h-4 w-28" />
+          <Schelet className="h-4 w-24" />
+        </div>
+      </div>
+      <main className="mx-auto max-w-6xl space-y-4 px-6 py-8" aria-live="polite" aria-busy="true">
+        <span className="sr-only">Se încarcă…</span>
+        <Schelet className="h-28 w-full" />
+        <Schelet className="h-64 w-full" />
+      </main>
+    </div>
+  )
+}
+
+function EcranEroare({
+  eroare,
+  onReincearca,
+}: {
+  eroare: unknown
+  onReincearca: () => void
+}) {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center px-6">
+      <Sigla inaltime="h-12" />
+      <div className="card mt-8 max-w-md p-6 text-center">
+        <h1 className="text-lg font-semibold text-ink">Nu s-a putut contacta serverul.</h1>
+        <p className="mt-2 text-sm text-ink-secondary">{mesajEroare(eroare)}</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          Verifică rețeaua și încearcă din nou. Dacă ține, anunță administratorul.
+        </p>
+        <button type="button" onClick={onReincearca} className="buton buton-primar mt-5">
+          Reîncearcă
+        </button>
+      </div>
+    </main>
   )
 }

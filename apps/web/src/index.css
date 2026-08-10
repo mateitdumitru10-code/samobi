@@ -1,1 +1,256 @@
 @import 'tailwindcss';
+
+/**
+ * Samobi UI.
+ *
+ * A factory tool: flat, border-first, warm greys. The crimson comes from the
+ * logo (#C22032, sampled from docs/image.png) and is spent sparingly, so it
+ * reads as identity rather than alarm.
+ *
+ * The brand is red and so is danger, which would be a real hazard if both were
+ * used the same way. They are not, and the rule is grammatical rather than
+ * chromatic: a FILLED red means "this is the thing to press", an OUTLINED red
+ * with an icon means "stop". Error surfaces never carry meaning on hue alone —
+ * they are placed under the field they belong to and carry an icon or the word
+ * „Eroare". Someone who cannot tell the two reds apart is still never misled.
+ */
+
+@theme {
+  --color-brand: #c22032;
+  --color-brand-hover: #a41a2a;
+  --color-brand-active: #8a1523;
+  --color-brand-subtle: #fbeaed;
+  --color-brand-border: #f0c6cd;
+
+  --color-surface-page: #fafaf9;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f5f5f4;
+
+  --color-line: #e7e5e4;
+  --color-line-strong: #d6d3d1;
+
+  --color-ink: #1c1917;
+  --color-ink-secondary: #57534e;
+  /* The floor for text that carries meaning: 4.9:1 on white. */
+  --color-ink-muted: #78716c;
+  --color-ink-disabled: #a8a29e;
+
+  --color-danger: #b42318;
+  --color-danger-hover: #912018;
+  --color-danger-bg: #fef3f2;
+  --color-danger-border: #fecdca;
+
+  --color-succes: #15803d;
+  --color-succes-bg: #f0fdf4;
+  --color-succes-border: #bbf7d0;
+
+  --color-atentie: #92400e;
+  --color-atentie-bg: #fffbeb;
+  --color-atentie-border: #fde68a;
+
+  --color-info: #1d4ed8;
+  --color-info-bg: #eff6ff;
+  --color-info-border: #bfdbfe;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+
+  --radius-camp: 8px;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background: var(--color-surface-page);
+    color: var(--color-ink);
+  }
+
+  /*
+   * One focus ring for the whole application. Every input in this codebase used
+   * to set `outline-none` and signal focus with a 1px border colour, which is
+   * not a focus indicator a keyboard user can find.
+   */
+  :where(input, select, textarea, button, a, [tabindex]):focus-visible {
+    outline: 3px solid rgb(194 32 50 / 0.35);
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  /* ----- butoane ----------------------------------------------------- */
+
+  .buton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.5rem;
+    padding-inline: 1rem;
+    border-radius: var(--radius-camp);
+    border: 1px solid transparent;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 120ms,
+      border-color 120ms,
+      color 120ms;
+  }
+
+  .buton:disabled {
+    cursor: not-allowed;
+    /* Not opacity: a faded crimson turns pink and reads as a different colour. */
+    background: var(--color-surface-sunken);
+    border-color: var(--color-line);
+    color: var(--color-ink-disabled);
+  }
+
+  .buton-primar {
+    background: var(--color-brand);
+    color: #fff;
+  }
+  .buton-primar:hover:not(:disabled) {
+    background: var(--color-brand-hover);
+  }
+  .buton-primar:active:not(:disabled) {
+    background: var(--color-brand-active);
+  }
+
+  .buton-secundar {
+    background: var(--color-surface);
+    border-color: var(--color-line-strong);
+    color: var(--color-ink);
+  }
+  .buton-secundar:hover:not(:disabled) {
+    background: var(--color-surface-sunken);
+  }
+
+  /* Outlined by default. Only the final confirmation step is filled. */
+  .buton-pericol {
+    background: var(--color-surface);
+    border-color: var(--color-danger-border);
+    color: var(--color-danger);
+  }
+  .buton-pericol:hover:not(:disabled) {
+    background: var(--color-danger-bg);
+  }
+
+  .buton-pericol-plin {
+    background: var(--color-danger);
+    color: #fff;
+  }
+  .buton-pericol-plin:hover:not(:disabled) {
+    background: var(--color-danger-hover);
+  }
+
+  .buton-discret {
+    background: transparent;
+    color: var(--color-ink-secondary);
+  }
+  .buton-discret:hover:not(:disabled) {
+    background: var(--color-surface-sunken);
+    color: var(--color-ink);
+  }
+
+  .buton-mic {
+    height: 2rem;
+    padding-inline: 0.625rem;
+    font-size: 0.8125rem;
+  }
+
+  /* ----- câmpuri ------------------------------------------------------ */
+
+  .camp {
+    display: block;
+    width: 100%;
+    height: 2.5rem;
+    padding-inline: 0.75rem;
+    border-radius: var(--radius-camp);
+    border: 1px solid var(--color-line-strong);
+    background: var(--color-surface);
+    font-size: 0.875rem;
+    color: var(--color-ink);
+  }
+
+  .camp::placeholder {
+    color: var(--color-ink-disabled);
+  }
+
+  .camp:disabled {
+    background: var(--color-surface-sunken);
+    color: var(--color-ink-disabled);
+    cursor: not-allowed;
+  }
+
+  .camp[aria-invalid='true'] {
+    border-color: var(--color-danger);
+  }
+
+  .camp-mic {
+    height: 2rem;
+    padding-inline: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .eticheta {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-ink-secondary);
+  }
+
+  .indiciu {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--color-ink-muted);
+  }
+
+  /* ----- suprafețe ---------------------------------------------------- */
+
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-camp);
+    box-shadow: 0 1px 2px rgb(28 25 23 / 0.05);
+  }
+
+  .insigna {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+}
+
+/*
+ * The workshop tablet. Fingers need 44px; a mouse does not, and forcing 44px
+ * everywhere would make the recipe grid twice as tall on a laptop.
+ */
+@media (pointer: coarse) {
+  .buton,
+  .camp {
+    min-height: 2.75rem;
+  }
+
+  .buton-mic,
+  .camp-mic {
+    min-height: 2.25rem;
+  }
+
+  table :where(td, th) {
+    padding-block: 0.75rem;
+  }
+}

@@ -29,6 +29,13 @@
       "when": 1786368238202,
       "tag": "20260810132358_pret_din_consum",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786373428800,
+      "tag": "20260810145028_amanare_nemapate",
+      "breakpoints": true
     }
   ]
 }

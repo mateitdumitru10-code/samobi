@@ -206,21 +206,32 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
       .flatMap((r) => (r.sugestii as SugestieSalvata[] | null) ?? [])
       .map((s) => s.codSaga)
 
-    const um = new Map(
+    // The unit is what makes an export land wrong, and price and stock are the
+    // best available answer to „is this the article the workshop really uses?".
+    // Deciding on the name alone was the one thing this screen exists to prevent.
+    const articole = new Map(
       codurile.length === 0
         ? []
         : (
             await db
-              .select({ codSaga: sagaArticle.codSaga, um: sagaArticle.um })
+              .select({
+                codSaga: sagaArticle.codSaga,
+                um: sagaArticle.um,
+                tip: sagaArticle.tip,
+                pretReferinta: sagaArticle.pretReferinta,
+                pretConsum: sagaArticle.pretConsum,
+                stoc: sagaArticle.stoc,
+              })
               .from(sagaArticle)
               .where(inArray(sagaArticle.codSaga, [...new Set(codurile)]))
-          ).map((a) => [a.codSaga, a.um]),
+          ).map((a) => [a.codSaga, a]),
     )
 
     return randuri.map((rand) => ({
       id: rand.id,
       denumireExterna: rand.denumireExterna,
       sugestieCodSaga: rand.sugestieCodSaga,
+      amanat: rand.amanat,
       creatLa: rand.creatLa.toISOString(),
       // Where it appears, so the tehnolog sees what a decision will complete.
       ocurente: (dupaMaterial.get(rand.id) ?? []).map((o) => ({
@@ -231,11 +242,33 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
         cantitate: o.cantitate,
         grup: o.grup,
       })),
-      sugestii: ((rand.sugestii as SugestieSalvata[] | null) ?? []).map((s) => ({
-        ...s,
-        um: um.get(s.codSaga) ?? '',
-      })),
+      sugestii: ((rand.sugestii as SugestieSalvata[] | null) ?? []).map((s) => {
+        const articol = articole.get(s.codSaga)
+        return {
+          ...s,
+          um: articol?.um ?? '',
+          tip: articol?.tip ?? null,
+          pretReferinta: articol?.pretReferinta ?? null,
+          pretConsum: articol?.pretConsum ?? null,
+          stoc: articol?.stoc ?? null,
+        }
+      }),
     }))
+  })
+
+  /** Put a name aside without deciding it. The hard ones stop being re-read. */
+  app.post('/nomenclator/nemapate/:id/amanare', doarTehnolog, async (cerere) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(cerere.params)
+    const { amanat } = z.object({ amanat: z.boolean() }).parse(cerere.body)
+
+    const [rand] = await db
+      .update(unmappedMaterial)
+      .set({ amanat })
+      .where(eq(unmappedMaterial.id, id))
+      .returning({ id: unmappedMaterial.id, amanat: unmappedMaterial.amanat })
+
+    if (rand === undefined) throw new NuExista('Intrarea nu există.')
+    return rand
   })
 
   /**
@@ -368,6 +401,123 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
       entitateId: id,
       actiune: 'modificare',
       diff: { codSaga, ...rezultat },
+    })
+
+    return rezultat
+  })
+
+  /**
+   * Takes a mapping back.
+   *
+   * A hundred decisions in a row is work nobody does carefully if every click is
+   * final, and a confirmation in front of each one is pure friction. The way out
+   * of that is an undo, so the only lines removed are the ones this mapping
+   * created and nobody has touched since — matched on the article, the position
+   * and the note the mapping wrote. Anything edited afterwards is somebody's
+   * work and stays where it is.
+   */
+  app.post('/nomenclator/nemapate/:id/anulare', doarTehnolog, async (cerere) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(cerere.params)
+    const utilizator = utilizatorul(cerere)
+
+    const rezultat = await db.transaction(async (tx) => {
+      const [material] = await tx
+        .select()
+        .from(unmappedMaterial)
+        .where(eq(unmappedMaterial.id, id))
+        .limit(1)
+      if (material === undefined) throw new NuExista('Intrarea nu există.')
+      if (!material.rezolvat || material.sugestieCodSaga === null) {
+        throw new CerereInvalida('Intrarea nu e rezolvată — nu am ce anula.')
+      }
+
+      const ocurente = await tx
+        .select()
+        .from(unmappedMaterialOcurenta)
+        .where(
+          and(
+            eq(unmappedMaterialOcurenta.unmappedMaterialId, id),
+            eq(unmappedMaterialOcurenta.aplicat, true),
+          ),
+        )
+
+      const draft = new Set(
+        ocurente.length === 0
+          ? []
+          : (
+              await tx
+                .select({ id: recipe.id })
+                .from(recipe)
+                .where(
+                  and(
+                    inArray(
+                      recipe.id,
+                      ocurente.map((o) => o.recipeId),
+                    ),
+                    eq(recipe.status, 'draft'),
+                  ),
+                )
+            ).map((r) => r.id),
+      )
+
+      const desfacute: string[] = []
+      const pastrate: string[] = []
+
+      for (const o of ocurente) {
+        if (!draft.has(o.recipeId)) {
+          pastrate.push(o.id)
+          continue
+        }
+        const sterse = await tx
+          .delete(recipeLine)
+          .where(
+            and(
+              eq(recipeLine.recipeId, o.recipeId),
+              eq(recipeLine.nrLinie, o.nrLinie),
+              eq(recipeLine.codSaga, material.sugestieCodSaga),
+              eq(
+                recipeLine.observatii,
+                `mapat din „${material.denumireExterna}", poziția ${o.nrLinie}`,
+              ),
+            ),
+          )
+          .returning({ id: recipeLine.id })
+
+        if (sterse.length > 0) desfacute.push(o.id)
+        else pastrate.push(o.id)
+      }
+
+      if (desfacute.length > 0) {
+        await tx
+          .update(unmappedMaterialOcurenta)
+          .set({ aplicat: false })
+          .where(inArray(unmappedMaterialOcurenta.id, desfacute))
+
+        await tx
+          .update(recipe)
+          .set({ lockVersion: sql`${recipe.lockVersion} + 1` })
+          .where(inArray(recipe.id, [...draft]))
+      }
+
+      await tx
+        .update(unmappedMaterial)
+        .set({ rezolvat: false, rezolvatDe: null, rezolvatLa: null, sugestieCodSaga: null })
+        .where(eq(unmappedMaterial.id, id))
+
+      return {
+        denumire: material.denumireExterna,
+        codSaga: material.sugestieCodSaga,
+        liniiSterse: desfacute.length,
+        liniiPastrate: pastrate.length,
+      }
+    })
+
+    await scrieAudit(cerere, {
+      userId: utilizator.id,
+      entitate: 'unmapped_material',
+      entitateId: id,
+      actiune: 'modificare',
+      diff: { anulare: rezultat },
     })
 
     return rezultat

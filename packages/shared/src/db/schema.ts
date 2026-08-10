@@ -173,6 +173,12 @@ export const unmappedMaterial = pgTable(
     rezolvat: boolean('rezolvat').notNull().default(false),
     rezolvatDe: uuid('rezolvat_de').references(() => profile.id),
     rezolvatLa: timestamp('rezolvat_la', { withTimezone: true }),
+    /**
+     * Put aside for later. The queue is worked in long sittings, and a handful
+     * of names need somebody else in the room to answer; without this they stay
+     * mixed in alphabetically and get re-read at every pass.
+     */
+    amanat: boolean('amanat').notNull().default(false),
     creatLa: creatLa(),
   },
   (t) => [
