@@ -72,6 +72,19 @@ Hostul „Direct connection" (`db.<ref>.supabase.co`) rezolvă **doar pe IPv6**.
 rețea IPv4 dă `ENOTFOUND`. Ambele variabile folosesc deci hostul de pooler, diferite
 doar prin port: `6543` pentru runtime, `5432` pentru migrări.
 
+### Configurația Supabase
+
+`supabase/config.toml` este sursa de adevăr pentru setările de autentificare, aplicate cu
+`supabase config push`. Nu se modifică din interfața web — la următorul push se pierd.
+
+Două capcane, ambele deja plătite o dată:
+
+- `[auth.email] enable_signup = false` **oprește și autentificarea**, nu doar înregistrarea.
+  Pentru a interzice conturile publice se folosește `[auth] enable_signup = false`.
+- `config push` trimite tot fișierul, inclusiv valorile implicite de dezvoltare locală.
+  Verifică diff-ul înainte: altfel coboară `otp_length`, `max_frequency` și
+  `enable_confirmations` la valorile de test.
+
 ### Numere
 
 - Toate cantitățile și prețurile: `numeric(18,6)` în Postgres.

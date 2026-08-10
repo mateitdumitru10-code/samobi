@@ -483,7 +483,13 @@ export const auditLog = pgTable(
   'audit_log',
   {
     id: bigserial('id', { mode: 'bigint' }).primaryKey(),
-    userId: uuid('user_id').references(() => profile.id),
+    /**
+     * Deliberately not a foreign key. An audit trail has to outlive what it
+     * describes; with a FK, the first logged action made the account impossible
+     * to delete and `auth.admin.deleteUser` reported success while deleting
+     * nothing.
+     */
+    userId: uuid('user_id'),
     entitate: text('entitate').notNull(),
     entitateId: text('entitate_id').notNull(),
     actiune: text('actiune').notNull(),

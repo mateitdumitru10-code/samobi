@@ -272,7 +272,15 @@ RLS care nu permit decât `INSERT`.
 - Frontend-ul primește doar `SUPABASE_ANON_KEY` și îl folosește numai pentru autentificare.
 - API-ul validează JWT-ul primit de la frontend, apoi citește rolul din `profile`.
   **Rolul nu se citește din token fără verificare** — un token poate fi vechi.
-- Fiecare rută verifică rolul explicit. Fără rută publică în afară de health check.
+- Fiecare rută verifică rolul explicit. Fără rută publică în afară de health check și login.
+- **Autentificarea trece prin API, nu direct din browser în Supabase.** Doar serverul poate
+  consemna încercările eșuate — un browser căruia i-a picat login-ul nu are niciun motiv să
+  ne anunțe. API-ul folosește cheia anon aici, exact drepturile pe care le-ar fi avut
+  browserul, și nu stochează parola nicăieri. Frontend-ul primește sesiunea și de acolo
+  clientul Supabase o reînnoiește singur.
+- Mesajul de login eșuat nu distinge între „nu există contul" și „parolă greșită".
+- Înregistrarea publică este oprită din configurația proiectului (`[auth] enable_signup =
+  false`). Conturile apar doar prin invitație.
 
 ## 5. Motorul de calcul
 
