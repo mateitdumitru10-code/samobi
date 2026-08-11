@@ -59,7 +59,7 @@ function sectiuniPentru(rol: string): Sectiune[] {
     { cheie: 'bonuri', eticheta: 'Bonuri' },
     { cheie: 'modele', eticheta: 'Modele și rețete' },
     { cheie: 'nomenclator', eticheta: 'Nomenclator' },
-    { cheie: 'rapoarte', eticheta: 'Rapoarte' },
+    { cheie: 'rapoarte', eticheta: 'Cost material' },
   ]
   // „Conturi" means the chart of accounts to anyone who works with SAGA. This
   // tab is about people.

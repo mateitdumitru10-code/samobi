@@ -87,7 +87,7 @@ Separat de cantitatea netă:
 cantitate_bruta = cantitate_neta * (1 + procent_pierderi / 100)
 ```
 
-Se păstrează distinct pentru ca antecalculațiile să separe consumul real de croială.
+Se păstrează distinct pentru ca raportul de cost să separe consumul real de croială.
 
 ## 3. Modelul de date
 
@@ -372,7 +372,7 @@ blochează exportul bonurilor care le folosesc.
 6. **Rețetar** — grid editabil, cele trei moduri de calcul, override-uri, validare formule
 7. **Bonuri și export XLSX** — previzualizare consumuri, generare, jurnal
 8. ~~**Versionare și aprobare**~~ — scos: rețeta se editează în loc
-9. **Rapoarte** — antecalculații, necesar de aprovizionare, cost material
+9. **Raport de cost** — cost material pe model, din bonurile exportate
 
 Modulele 1–7 formează un produs utilizabil.
 
