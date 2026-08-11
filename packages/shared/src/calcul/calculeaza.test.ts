@@ -4,6 +4,7 @@ import { calculeazaConsumuri } from './calculeaza.js'
 import {
   EroareCantitateFixaLipsa,
   EroareCantitateManualaNepermisa,
+  EroareCantitateZero,
   EroareGestiuneInconsistenta,
   EroareInaltimeLipsa,
   EroareLinieExclusaNepermisa,
@@ -429,6 +430,21 @@ describe('reproductibilitate', () => {
     expect(r.versiuneReteta).toBe(1)
     expect(r.retetaId).toBe('reteta-1')
     expect(r.dimensiuneId).toBe('dim-1')
+  })
+})
+
+describe('cantitatea zero', () => {
+  it('refuză o linie care nu consumă nimic', () => {
+    // Ar pleca în export ca 0,000: materialul apare pe bon și nu se descarcă.
+    expect(() => calc([linie({ modCalcul: 'fixa', cantitateFixa: '0' })])).toThrow(
+      EroareCantitateZero,
+    )
+  })
+
+  it('refuză și o formulă care se evaluează la zero', () => {
+    expect(() =>
+      calc([linie({ modCalcul: 'formula', formula: '(L-2000)/1000', cantitateFixa: null })]),
+    ).toThrow(EroareCantitateZero)
   })
 })
 

@@ -507,6 +507,11 @@ export function RetetaEditor({
         duplica(cheie)
         return
       }
+      if (eveniment.key === 'Backspace' && (eveniment.ctrlKey || eveniment.metaKey)) {
+        eveniment.preventDefault()
+        sterge(cheie)
+        return
+      }
       // Enter on the last row keeps going instead of stopping dead.
       const rand = Number(eveniment.currentTarget.dataset['rand'])
       if (eveniment.key === 'Enter' && rand === linii.length - 1) {
@@ -823,19 +828,31 @@ export function RetetaEditor({
                           {...ancora}
                         />
                       )}
+                      {/*
+                        This is what makes the fabric a choice. A line marked
+                        here carries no article: the recipe gives the quantity
+                        and whoever issues the bon says which fabric it is. All
+                        201 fabric lines were marked by script; this is how a
+                        new one gets marked by hand, so it stays.
+                      */}
                       <button
                         type="button"
-                        tabIndex={-1}
                         disabled={blocat}
-                        title="Material variabil: codul se alege la crearea bonului"
+                        aria-pressed={linie.esteVariabil}
+                        title={
+                          linie.esteVariabil
+                            ? 'Materialul se alege la emiterea bonului. Apasă ca să-l fixezi.'
+                            : 'Materialul e fix. Apasă dacă se alege la emiterea bonului (stofa).'
+                        }
+                        aria-label={`Materialul de pe linia ${linie.nrLinie} se alege la emiterea bonului`}
                         onClick={() => schimba(linie.cheie, 'esteVariabil', !linie.esteVariabil)}
                         className={
                           linie.esteVariabil
-                            ? 'rounded bg-info-bg px-1.5 py-0.5 text-[10px] font-medium text-info'
-                            : 'rounded border border-line px-1.5 py-0.5 text-[10px] text-ink-disabled'
+                            ? 'actiune-rand shrink-0 border border-info-border bg-info-bg px-1.5 text-[10px] font-medium text-info'
+                            : 'actiune-rand shrink-0 border border-line px-1.5 text-[10px] text-ink-disabled'
                         }
                       >
-                        var
+                        pe bon
                       </button>
                       {/* On the row, not under it. The name is in the field and
                           the code beside it, so a line stays one line — forty
@@ -997,41 +1014,51 @@ export function RetetaEditor({
 
                   <td className="px-2 py-1 text-right whitespace-nowrap">
                     {areOverride && <Insigna fel="atentie">fixat</Insigna>}
+                    {/*
+                      Duplicate and move stay out of the tab order — they have
+                      shortcuts, and forty rows × five stops would make Tab
+                      useless. Delete does not: it had neither a stop nor a
+                      shortcut, so from the keyboard a line could not be removed
+                      at all. It has both now.
+                    */}
                     {!blocat && (
-                      <span className="ml-2 inline-flex gap-1 text-xs text-ink-disabled">
+                      <span className="ml-2 inline-flex gap-0.5">
                         <button
                           type="button"
                           tabIndex={-1}
+                          aria-hidden
                           title="Duplică linia (Ctrl+D)"
                           onClick={() => duplica(linie.cheie)}
-                          className="hover:text-ink"
+                          className="actiune-rand"
                         >
                           ⧉
                         </button>
                         <button
                           type="button"
                           tabIndex={-1}
+                          aria-hidden
                           title="Mută în sus (Alt+↑)"
                           onClick={() => muta(linie.cheie, -1)}
-                          className="hover:text-ink"
+                          className="actiune-rand"
                         >
                           ↑
                         </button>
                         <button
                           type="button"
                           tabIndex={-1}
+                          aria-hidden
                           title="Mută în jos (Alt+↓)"
                           onClick={() => muta(linie.cheie, 1)}
-                          className="hover:text-ink"
+                          className="actiune-rand"
                         >
                           ↓
                         </button>
                         <button
                           type="button"
-                          tabIndex={-1}
-                          title="Șterge linia"
+                          title="Șterge linia (Ctrl+Backspace)"
+                          aria-label={`Șterge linia ${linie.nrLinie}`}
                           onClick={() => sterge(linie.cheie)}
-                          className="hover:text-danger"
+                          className="actiune-rand hover:bg-danger-bg hover:text-danger"
                         >
                           ✕
                         </button>
@@ -1061,7 +1088,7 @@ export function RetetaEditor({
       {!blocat && (
         <p className="text-xs text-ink-muted">
           Săgeți între celule · Enter rândul următor (pe ultimul adaugă unul nou) · Ctrl+D duplică ·
-          Alt+↑/↓ mută linia
+          Alt+↑/↓ mută linia · Ctrl+Backspace șterge linia
         </p>
       )}
 

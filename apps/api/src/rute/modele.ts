@@ -1,5 +1,5 @@
 import { dimension, model, productionOrder, recipe, sagaArticle } from '@samobi/shared/db'
-import { cantitatiPeLinie, type DimensiuneCeruta } from '@samobi/shared/calcul'
+import { cantitatiPeLinie, D, type DimensiuneCeruta } from '@samobi/shared/calcul'
 import {
   schemaDimensiune,
   schemaDimensiuneBaza,
@@ -270,67 +270,82 @@ export function ruteModele(app: FastifyInstance, verifica: VerificatorToken) {
     const date = schemaDimensiuneBaza.partial().extend({ activ: z.boolean().optional() }).parse(cerere.body)
     const utilizator = utilizatorul(cerere)
 
-    const [curenta] = await db
-      .select()
-      .from(dimension)
-      .where(and(eq(dimension.id, dimensiuneId), eq(dimension.modelId, id)))
-      .limit(1)
-    if (curenta === undefined) throw new NuExista('Dimensiunea nu există.')
-
     /**
-     * A measurement counts as changed only if it differs from what is stored.
+     * One transaction, and the dimension row locked inside it.
      *
-     * The edit form sends every field, so „rename the size" arrived as a write
-     * to `lungime` as well and was refused on any dimension that had bons —
-     * blocking the one edit that is always allowed. Compared numerically:
-     * `numeric(18,6)` comes back as „2000.000000" and the form sends „2000".
+     * Reading the bon count and writing the measurements as two separate
+     * statements left a window: a bon issued between them was computed from the
+     * old numbers and the new ones were written anyway. Postgres takes a KEY
+     * SHARE lock on this row for the foreign key of every bon being inserted,
+     * so `FOR UPDATE` here waits for a bon in flight and blocks one that starts
+     * after — the count and the write now see the same world.
      */
-    const difera = (nou: string | null | undefined, vechi: string | null): boolean => {
-      if (nou === undefined) return false
-      if (nou === null || vechi === null) return nou !== vechi
-      return Number(nou) !== Number(vechi)
-    }
+    const actualizata = await db.transaction(async (tx) => {
+      const [curenta] = await tx
+        .select()
+        .from(dimension)
+        .where(and(eq(dimension.id, dimensiuneId), eq(dimension.modelId, id)))
+        .for('update')
+        .limit(1)
+      if (curenta === undefined) throw new NuExista('Dimensiunea nu există.')
 
-    const schimbaMasuri =
-      difera(date.lungime, curenta.lungime) ||
-      difera(date.latime, curenta.latime) ||
-      difera(date.inaltime, curenta.inaltime)
-
-    if (schimbaMasuri) {
-      const [cuBonuri] = await db
-        .select({ n: count() })
-        .from(productionOrder)
-        .where(
-          and(
-            eq(productionOrder.dimensionId, dimensiuneId),
-            ne(productionOrder.status, 'anulat'),
-          ),
-        )
-
-      if ((cuBonuri?.n ?? 0) > 0) {
-        throw new Conflict(
-          `Dimensiunea are ${cuBonuri?.n} bonuri emise pe ea. Măsurile nu se mai schimbă — ` +
-            'consumurile de pe bonuri s-au calculat din ele. Adaugă o dimensiune nouă.',
-        )
+      /**
+       * A measurement counts as changed only if it differs from what is stored.
+       *
+       * The edit form sends every field, so „rename the size" arrived as a
+       * write to `lungime` as well and was refused on any dimension that had
+       * bons — blocking the one edit that is always allowed. Compared as
+       * decimals, never as floats: `numeric(18,6)` comes back as „2000.000000"
+       * and the form sends „2000".
+       */
+      const difera = (nou: string | null | undefined, vechi: string | null): boolean => {
+        if (nou === undefined) return false
+        if (nou === null || vechi === null) return nou !== vechi
+        return !new D(nou).equals(new D(vechi))
       }
-    }
 
-    const [actualizata] = await db
-      .update(dimension)
-      .set({
-        ...(date.cod !== undefined ? { cod: date.cod } : {}),
-        ...(date.lungime !== undefined ? { lungime: date.lungime } : {}),
-        ...(date.latime !== undefined ? { latime: date.latime } : {}),
-        ...(date.inaltime !== undefined ? { inaltime: date.inaltime } : {}),
-        ...(date.codSagaProdus !== undefined
-          ? { codSagaProdus: date.codSagaProdus === '' ? null : date.codSagaProdus }
-          : {}),
-        ...(date.activ !== undefined ? { activ: date.activ } : {}),
-      })
-      .where(and(eq(dimension.id, dimensiuneId), eq(dimension.modelId, id)))
-      .returning()
+      const schimbaMasuri =
+        difera(date.lungime, curenta.lungime) ||
+        difera(date.latime, curenta.latime) ||
+        difera(date.inaltime, curenta.inaltime)
 
-    if (actualizata === undefined) throw new NuExista('Dimensiunea nu există.')
+      if (schimbaMasuri) {
+        const [cuBonuri] = await tx
+          .select({ n: count() })
+          .from(productionOrder)
+          .where(
+            and(
+              eq(productionOrder.dimensionId, dimensiuneId),
+              ne(productionOrder.status, 'anulat'),
+            ),
+          )
+
+        if ((cuBonuri?.n ?? 0) > 0) {
+          throw new Conflict(
+            `Dimensiunea are ${cuBonuri?.n} bonuri emise pe ea. Măsurile nu se mai schimbă — ` +
+              'consumurile de pe bonuri s-au calculat din ele. Adaugă o dimensiune nouă.',
+          )
+        }
+      }
+
+      const [rand] = await tx
+        .update(dimension)
+        .set({
+          ...(date.cod !== undefined ? { cod: date.cod } : {}),
+          ...(date.lungime !== undefined ? { lungime: date.lungime } : {}),
+          ...(date.latime !== undefined ? { latime: date.latime } : {}),
+          ...(date.inaltime !== undefined ? { inaltime: date.inaltime } : {}),
+          ...(date.codSagaProdus !== undefined
+            ? { codSagaProdus: date.codSagaProdus === '' ? null : date.codSagaProdus }
+            : {}),
+          ...(date.activ !== undefined ? { activ: date.activ } : {}),
+        })
+        .where(and(eq(dimension.id, dimensiuneId), eq(dimension.modelId, id)))
+        .returning()
+
+      if (rand === undefined) throw new NuExista('Dimensiunea nu există.')
+      return rand
+    })
 
     await scrieAudit(cerere, {
       userId: utilizator.id,

@@ -10,6 +10,9 @@ export {
   type ScopFormula,
   type VariabilaPermisa,
 } from './formula.js'
+// The decimal type itself: anything comparing or adding quantities outside the
+// engine has to do it the same way, never through a float.
+export { D, catreString, type Dec } from './decimal.js'
 export {
   calculeazaConsumuri,
   cantitatiPeLinie,

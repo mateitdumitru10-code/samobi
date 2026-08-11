@@ -73,7 +73,9 @@ export type DimensiuneNoua = z.infer<typeof schemaDimensiune>
 export const schemaValoarePeDimensiune = z
   .object({
     dimensiuneId: z.string().uuid(),
-    cantitate: zecimal('Cantitatea trebuie să fie un număr.'),
+    // Zero is not a quantity, it is a line that should not exist: it exports as
+    // 0,000 and the material is silently never discharged.
+    cantitate: zecimalPozitiv('Cantitatea trebuie să fie un număr.'),
     esteOverride: z.boolean().default(false),
     motiv: z.string().trim().max(300).nullable().optional(),
   })
@@ -94,7 +96,9 @@ export const schemaLinieReteta = z
     categorieVariabila: z.string().trim().max(40).nullable().default(null),
     um: z.string().trim().min(1, 'UM este obligatorie.').max(20),
     modCalcul: schemaModCalcul,
-    cantitateFixa: zecimal('Cantitatea fixă trebuie să fie un număr.').nullable().default(null),
+    cantitateFixa: zecimalPozitiv('Cantitatea fixă trebuie să fie un număr.')
+      .nullable()
+      .default(null),
     formula: z.string().trim().max(500).nullable().default(null),
     procentPierderi: zecimal('Procentul de pierderi trebuie să fie un număr.').default('0'),
     gestiuneDescarcare: z.string().trim().max(60).nullable().default(null),

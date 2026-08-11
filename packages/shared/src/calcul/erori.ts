@@ -183,3 +183,22 @@ export class EroareLinieExclusaNepermisa extends EroareCalcul {
     super(`Linia ${nrLinie} nu este variabilă și nu poate fi scoasă de pe bon.`, { nrLinie })
   }
 }
+
+/**
+ * Zero is not a quantity.
+ *
+ * It leaves the line in the export as `0,000`, so the material is booked as
+ * consumed and never discharged — the one failure a consumption document must
+ * not be able to produce quietly.
+ */
+export class EroareCantitateZero extends EroareCalcul {
+  readonly cod = 'CANTITATE_ZERO'
+
+  constructor(nrLinie: number) {
+    super(
+      `Linia ${nrLinie} produce cantitatea 0. Scoate linia din rețetă dacă materialul ` +
+        'nu se consumă.',
+      { nrLinie },
+    )
+  }
+}

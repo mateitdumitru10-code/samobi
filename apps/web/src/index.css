@@ -222,6 +222,27 @@
     box-shadow: 0 1px 2px rgb(28 25 23 / 0.05);
   }
 
+  /*
+   * The per-row actions in the recipe grid. Bare glyphs at text size were
+   * roughly sixteen pixels of target — fine for a mouse, not for the workshop
+   * tablet, where the same buttons delete a line.
+   */
+  .actiune-rand {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    border-radius: 6px;
+    color: var(--color-ink-muted);
+    cursor: pointer;
+  }
+
+  .actiune-rand:hover:not(:disabled) {
+    background: var(--color-surface-sunken);
+    color: var(--color-ink);
+  }
+
   .insigna {
     display: inline-flex;
     align-items: center;
@@ -247,6 +268,11 @@
 
   .buton-mic,
   .camp-mic {
+    min-height: 2.25rem;
+  }
+
+  .actiune-rand {
+    min-width: 2.25rem;
     min-height: 2.25rem;
   }
 

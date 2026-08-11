@@ -3,6 +3,7 @@ import {
   EroareCantitateFixaLipsa,
   EroareCantitateManualaNepermisa,
   EroareCantitateNegativa,
+  EroareCantitateZero,
   EroareCodSagaLipsa,
   EroareFormulaLipsa,
   EroareGestiuneInconsistenta,
@@ -295,6 +296,7 @@ export function calculeazaConsumuri(intrare: IntrareCalcul): RezultatCalcul {
     if (neta.isNegative()) {
       throw new EroareCantitateNegativa(linie.nrLinie, catreString(neta))
     }
+    if (neta.isZero()) throw new EroareCantitateZero(linie.nrLinie)
 
     const codSaga = rezolvaCodSaga(linie, alegeriMateriale)
 
