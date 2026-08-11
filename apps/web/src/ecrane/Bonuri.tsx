@@ -385,7 +385,7 @@ function BonNou() {
             type="date"
             value={data}
             onChange={(e) => setData(e.target.value)}
-            className="camp"
+            className="camp w-40"
           />
         </div>
 

@@ -61,7 +61,7 @@ export function Rapoarte({ utilizator }: { utilizator: { rol: string } }) {
             value={deLa}
             onChange={(e) => setDeLa(e.target.value)}
             aria-invalid={intervalInvers}
-            className="camp"
+            className="camp w-40"
           />
         </div>
         <div>
@@ -74,7 +74,7 @@ export function Rapoarte({ utilizator }: { utilizator: { rol: string } }) {
             value={panaLa}
             onChange={(e) => setPanaLa(e.target.value)}
             aria-invalid={intervalInvers}
-            className="camp"
+            className="camp w-40"
           />
         </div>
         <p className="pb-2.5 text-sm text-ink-muted">

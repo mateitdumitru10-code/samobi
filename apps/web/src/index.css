@@ -179,6 +179,30 @@
     color: var(--color-ink);
   }
 
+  /*
+   * A native date input is not a text box.
+   *
+   * WebKit lays its internal fields out at the top of the box rather than
+   * centring them against the height and padding set here, and it sizes itself
+   * to its content — so `width: 100%` inside an auto-width column resolved to
+   * something narrower than every field beside it. Laying it out as a flex row
+   * centres the digits; the width is set where it is used.
+   */
+  input[type='date'].camp {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Safari otherwise leaves the picker button in its own blue. */
+  input[type='date'].camp::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.55;
+  }
+
+  input[type='date'].camp::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
   .camp::placeholder {
     color: var(--color-ink-disabled);
   }
