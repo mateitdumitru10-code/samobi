@@ -22,9 +22,9 @@ interface Comparatie {
 /**
  * The answer to „ce se schimbă când se schimbă dimensiunea".
  *
- * Every line, at every registered size, side by side — plus a trial size the
- * tehnolog types, so a formula can be pushed past the sizes on record before
- * anybody is asked to build one. A row that reads the same all the way across
+ * Every line, at every registered size, side by side — plus a trial size that
+ * is typed, not saved, so a formula can be checked before a dimension is added
+ * for it. A row that reads the same all the way across
  * is either genuinely size-independent or a constant nobody has converted yet,
  * and seeing the two kinds next to each other is what makes the difference
  * obvious.

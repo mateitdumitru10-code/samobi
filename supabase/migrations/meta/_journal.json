@@ -57,6 +57,13 @@
       "when": 1786434952271,
       "tag": "20260811075552_fara_aprobare",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786437366762,
+      "tag": "20260811083606_fara_dimensiuni_la_comanda",
+      "breakpoints": true
     }
   ]
 }

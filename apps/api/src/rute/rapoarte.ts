@@ -68,21 +68,7 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
 
     let calcul
     try {
-      calcul = await calculeazaCuDenumiri({
-        modelId: date.modelId,
-        // Quoting a made-to-order size is the reason somebody opens this report.
-        dimensiune:
-          date.dimensiuneId !== undefined
-            ? { dimensiuneId: date.dimensiuneId }
-            : {
-                lungime: date.dimensiune?.lungime ?? '',
-                latime: date.dimensiune?.latime ?? '',
-                inaltime: date.dimensiune?.inaltime ?? null,
-              },
-        cantitate: date.cantitate,
-        alegeri: date.alegeri,
-        valoriManuale: date.valoriManuale,
-      })
+      calcul = await calculeazaCuDenumiri(date)
     } catch (err) {
       if (err instanceof EroareCalcul) throw new CerereInvalida(err.message)
       throw err
@@ -305,9 +291,7 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
       .from(productionOrderLine)
       .innerJoin(productionOrder, eq(productionOrder.id, productionOrderLine.productionOrderId))
       .innerJoin(model, eq(model.id, productionOrder.modelId))
-      // Left, not inner: a made-to-order bon has no dimension row, and an inner
-      // join would drop exactly the bons somebody opened this report to see.
-      .leftJoin(dimension, eq(dimension.id, productionOrder.dimensionId))
+      .innerJoin(dimension, eq(dimension.id, productionOrder.dimensionId))
       .leftJoin(sagaArticle, eq(sagaArticle.codSaga, productionOrderLine.codSaga))
       .where(
         and(
@@ -324,9 +308,7 @@ export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
     >()
 
     for (const l of linii) {
-      // Every made-to-order size would otherwise be its own group of one, and
-      // cost-per-piece across the model would dissolve into noise.
-      const cheie = `${l.modelCod} · ${l.dimensiuneCod ?? 'la comandă'}`
+      const cheie = `${l.modelCod} · ${l.dimensiuneCod}`
       const o = peModel.get(cheie) ?? {
         denumire: l.modelDenumire,
         bonuri: new Set<string>(),

@@ -236,28 +236,6 @@ export const model = pgTable(
     denumire: text('denumire').notNull(),
     familie: text('familie').notNull(),
     umProdus: text('um_produs').notNull().default('BUC'),
-    /**
-     * The envelope this model may be built in, when it is sold made to order.
-     *
-     * Null means the model is only issued on its registered dimensions. That is
-     * the default on purpose: opening a model to arbitrary sizes is a claim
-     * that its formulas hold across a range, and somebody has to make it.
-     */
-    lungimeMin: cantitate('lungime_min'),
-    lungimeMax: cantitate('lungime_max'),
-    latimeMin: cantitate('latime_min'),
-    latimeMax: cantitate('latime_max'),
-    inaltimeMin: cantitate('inaltime_min'),
-    inaltimeMax: cantitate('inaltime_max'),
-    /**
-     * Where a made-to-order bon is booked in SAGA.
-     *
-     * A size nobody registered has no article of its own, and the app cannot
-     * mint one — the catalogue is a one-way import. So the accountant creates a
-     * single article per model ("PAT DAVID DIMENSIUNE SPECIALĂ"), and the real
-     * measurements stay here, on the bon.
-     */
-    codSagaProdusComanda: text('cod_saga_produs_comanda').references(() => sagaArticle.codSaga),
     activ: boolean('activ').notNull().default(true),
     creatDe: uuid('creat_de').references(() => profile.id),
     creatLa: creatLa(),
@@ -269,29 +247,6 @@ export const model = pgTable(
       sql`${t.familie} in ('PAT', 'CANAPEA', 'COLTAR', 'SALTEA', 'ALTELE')`,
     ),
     check('model_cod_nevid', sql`length(btrim(${t.cod})) > 0`),
-    // Each axis is declared whole or not at all, and a minimum above its
-    // maximum is an interval nothing can satisfy.
-    check(
-      'model_interval_lungime',
-      sql`(${t.lungimeMin} is null and ${t.lungimeMax} is null)
-          or (${t.lungimeMin} > 0 and ${t.lungimeMax} >= ${t.lungimeMin})`,
-    ),
-    check(
-      'model_interval_latime',
-      sql`(${t.latimeMin} is null and ${t.latimeMax} is null)
-          or (${t.latimeMin} > 0 and ${t.latimeMax} >= ${t.latimeMin})`,
-    ),
-    check(
-      'model_interval_inaltime',
-      sql`(${t.inaltimeMin} is null and ${t.inaltimeMax} is null)
-          or (${t.inaltimeMin} > 0 and ${t.inaltimeMax} >= ${t.inaltimeMin})`,
-    ),
-    // Length and width together are what makes a model made-to-order; height is
-    // optional because not every model uses H.
-    check(
-      'model_la_comanda_coerent',
-      sql`(${t.lungimeMin} is null) = (${t.latimeMin} is null)`,
-    ),
   ],
 ).enableRLS()
 
@@ -503,14 +458,15 @@ export const productionOrder = pgTable(
     modelId: uuid('model_id')
       .notNull()
       .references(() => model.id),
-    /** null for a made-to-order size: there is no registered row to point at */
-    dimensionId: uuid('dimension_id').references(() => dimension.id),
+    dimensionId: uuid('dimension_id')
+      .notNull()
+      .references(() => dimension.id),
     /**
      * The measurements the consumption was actually computed from.
      *
-     * Snapshotted rather than read back through `dimension_id`, because a
-     * dimension row is editable and a bon must mean in three years what it
-     * meant the day it was issued.
+     * Snapshotted rather than read back through `dimension_id`: a dimension row
+     * is editable until a bon lands on it, and a bon must mean in three years
+     * what it meant the day it was issued.
      */
     lungime: cantitate('lungime').notNull(),
     latime: cantitate('latime').notNull(),

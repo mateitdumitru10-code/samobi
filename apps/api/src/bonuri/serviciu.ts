@@ -1,6 +1,5 @@
 import {
   dimension,
-  model,
   recipe,
   recipeLine,
   recipeLineDimension,
@@ -9,7 +8,6 @@ import {
 import {
   calculeazaConsumuri,
   type DimensiuneCeruta,
-  type IntervalDimensiuni,
   type LinieReteta,
   type RezultatCalcul,
 } from '@samobi/shared/calcul'
@@ -24,62 +22,21 @@ import { CerereInvalida, NuExista } from '../erori.js'
  * The engine takes plain data and touches no database, which is what keeps it
  * testable; this is the seam where the two meet.
  */
-/** Either a registered dimension, or the measurements a customer asked for. */
-export type CerereDimensiune =
-  | { dimensiuneId: string }
-  | { lungime: string; latime: string; inaltime: string | null }
+export async function incarcaPentruCalcul(modelId: string, dimensiuneId: string) {
+  const [dim] = await db
+    .select()
+    .from(dimension)
+    .where(and(eq(dimension.id, dimensiuneId), eq(dimension.modelId, modelId)))
+    .limit(1)
 
-export async function incarcaPentruCalcul(modelId: string, cerere: CerereDimensiune) {
-  const [modelul] = await db.select().from(model).where(eq(model.id, modelId)).limit(1)
-  if (modelul === undefined) throw new NuExista('Modelul nu există.')
+  if (dim === undefined) throw new NuExista('Dimensiunea nu aparține modelului ales.')
 
-  const interval: IntervalDimensiuni | null =
-    modelul.lungimeMin !== null &&
-    modelul.lungimeMax !== null &&
-    modelul.latimeMin !== null &&
-    modelul.latimeMax !== null
-      ? {
-          lungimeMin: modelul.lungimeMin,
-          lungimeMax: modelul.lungimeMax,
-          latimeMin: modelul.latimeMin,
-          latimeMax: modelul.latimeMax,
-          inaltimeMin: modelul.inaltimeMin,
-          inaltimeMax: modelul.inaltimeMax,
-        }
-      : null
-
-  let dimensiune: DimensiuneCeruta
-  let codSagaProdus: string | null
-
-  if ('dimensiuneId' in cerere) {
-    const [dim] = await db
-      .select()
-      .from(dimension)
-      .where(and(eq(dimension.id, cerere.dimensiuneId), eq(dimension.modelId, modelId)))
-      .limit(1)
-
-    if (dim === undefined) throw new NuExista('Dimensiunea nu aparține modelului ales.')
-
-    dimensiune = {
-      id: dim.id,
-      cod: dim.cod,
-      lungime: dim.lungime,
-      latime: dim.latime,
-      inaltime: dim.inaltime,
-    }
-    codSagaProdus = dim.codSagaProdus
-  } else {
-    dimensiune = {
-      id: null,
-      cod: `${Number(cerere.lungime)}×${Number(cerere.latime)}${
-        cerere.inaltime === null ? '' : `×${Number(cerere.inaltime)}`
-      }`,
-      lungime: cerere.lungime,
-      latime: cerere.latime,
-      inaltime: cerere.inaltime,
-    }
-    // The whole model books on one article; the size stays here, on the bon.
-    codSagaProdus = modelul.codSagaProdusComanda
+  const dimensiune: DimensiuneCeruta = {
+    id: dim.id,
+    cod: dim.cod,
+    lungime: dim.lungime,
+    latime: dim.latime,
+    inaltime: dim.inaltime,
   }
 
   // One recipe per model, edited in place. The bon still pins its id, and each
@@ -145,9 +102,7 @@ export async function incarcaPentruCalcul(modelId: string, cerere: CerereDimensi
 
   return {
     dimensiune,
-    interval,
-    codSagaProdus,
-    model: modelul,
+    codSagaProdus: dim.codSagaProdus,
     reteta: {
       id: reteta.id,
       modelId: reteta.modelId,
@@ -164,24 +119,6 @@ export async function incarcaPentruCalcul(modelId: string, cerere: CerereDimensi
         um: l.um,
         categorieVariabila: l.categorieVariabila,
       })),
-    /**
-     * `tabel` lines, with the values registered for each size.
-     *
-     * At a made-to-order size these have nothing to look up, so the screen asks
-     * for the number — and shows the neighbouring registered values, which is
-     * what makes the number enterable at all.
-     */
-    liniiTabel: linii
-      .filter((l) => l.modCalcul === 'tabel')
-      .map((l) => ({
-        id: l.id,
-        nrLinie: l.nrLinie,
-        grup: l.grup,
-        um: l.um,
-        valori: (dupaLinie.get(l.id) ?? [])
-          .filter((v) => !v.esteOverride)
-          .map((v) => ({ dimensiuneId: v.dimensionId, cantitate: v.cantitate })),
-      })),
   }
 }
 
@@ -197,12 +134,8 @@ export async function incarcaPentruComparatie(modelId: string) {
     .orderBy(asc(dimension.cod))
 
   const primaDimensiune = dimensiuni[0]
-  const context = await incarcaPentruCalcul(
-    modelId,
-    primaDimensiune === undefined
-      ? { lungime: '1000', latime: '1000', inaltime: null }
-      : { dimensiuneId: primaDimensiune.id },
-  )
+  if (primaDimensiune === undefined) throw new CerereInvalida('Modelul nu are dimensiuni.')
+  const context = await incarcaPentruCalcul(modelId, primaDimensiune.id)
 
   const coduri = context.reteta.linii
     .map((l) => l.codSaga)
@@ -238,20 +171,17 @@ export interface ConsumCuDenumire {
 /** Runs the engine and attaches the catalogue names the operator needs to see. */
 export async function calculeazaCuDenumiri(intrare: {
   modelId: string
-  dimensiune: CerereDimensiune
+  dimensiuneId: string
   cantitate: string
   alegeri: Record<string, string>
-  valoriManuale?: Record<string, string>
 }) {
-  const context = await incarcaPentruCalcul(intrare.modelId, intrare.dimensiune)
+  const context = await incarcaPentruCalcul(intrare.modelId, intrare.dimensiuneId)
 
   const rezultat = calculeazaConsumuri({
     reteta: context.reteta,
     dimensiune: context.dimensiune,
     cantitateProdus: intrare.cantitate,
     alegeriMateriale: new Map(Object.entries(intrare.alegeri)),
-    interval: context.interval,
-    valoriManuale: new Map(Object.entries(intrare.valoriManuale ?? {})),
   })
 
   const coduri = rezultat.linii.map((l) => l.codSaga)

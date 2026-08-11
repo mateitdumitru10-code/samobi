@@ -3,8 +3,6 @@ import {
   EroareCantitateFixaLipsa,
   EroareCantitateNegativa,
   EroareCodSagaLipsa,
-  EroareDimensiuneInAfaraIntervalului,
-  EroareDimensiuneLaComandaNepermisa,
   EroareFormulaLipsa,
   EroareGestiuneInconsistenta,
   EroareInaltimeLipsa,
@@ -13,7 +11,6 @@ import {
   EroareRezultatNenumeric,
   EroareUmInconsistenta,
   EroareValoareLipsaPeDimensiune,
-  EroareValoareManualaLipsa,
 } from './erori.js'
 import { evalueazaFormula, valideazaFormula, type ScopFormula } from './formula.js'
 import type {
@@ -21,7 +18,6 @@ import type {
   Contributie,
   DimensiuneCeruta,
   Reteta,
-  IntervalDimensiuni,
   IntrareCalcul,
   LinieReteta,
   RezultatCalcul,
@@ -54,37 +50,6 @@ function gasesteValoare(
   return linie.valoriPeDimensiuni.find((v) => v.dimensiuneId === dimensiuneId)
 }
 
-/**
- * Refuses a made-to-order size the model was never opened to.
- *
- * Blocking rather than warning, on purpose: a warning band is a band people
- * click through, and what is on the other side of it is a bon with the wrong
- * quantity of the most expensive material in the product.
- */
-function verificaInterval(
-  dimensiune: DimensiuneCeruta,
-  interval: IntervalDimensiuni | null | undefined,
-): void {
-  if (dimensiune.id !== null) return
-  if (interval === null || interval === undefined) throw new EroareDimensiuneLaComandaNepermisa()
-
-  const axe: [string | null, 'lungime' | 'lățime' | 'înălțime', string | null, string | null][] = [
-    [dimensiune.lungime, 'lungime', interval.lungimeMin, interval.lungimeMax],
-    [dimensiune.latime, 'lățime', interval.latimeMin, interval.latimeMax],
-    [dimensiune.inaltime, 'înălțime', interval.inaltimeMin, interval.inaltimeMax],
-  ]
-
-  for (const [valoare, axa, min, max] of axe) {
-    // An axis the model does not use, or a size that does not state it: the
-    // formulas decide whether that is a problem, not this check.
-    if (valoare === null || min === null || max === null) continue
-    const v = parseNumar(valoare, axa)
-    if (v.lessThan(new D(min)) || v.greaterThan(new D(max))) {
-      throw new EroareDimensiuneInAfaraIntervalului(axa, catreString(v), min, max)
-    }
-  }
-}
-
 interface CantitateUnitara {
   neta: Dec
   sursa: SursaCantitate
@@ -102,7 +67,6 @@ interface CantitateUnitara {
 function cantitateNetaUnitara(
   linie: LinieReteta,
   dimensiune: DimensiuneCeruta,
-  valoriManuale: ReadonlyMap<string, string>,
 ): CantitateUnitara {
   const valoare = gasesteValoare(linie, dimensiune.id)
 
@@ -127,31 +91,19 @@ function cantitateNetaUnitara(
     }
 
     case 'tabel': {
-      if (valoare !== undefined) {
-        return {
-          neta: parseNumar(valoare.cantitate, 'cantitate', linie.nrLinie),
-          sursa: 'tabel',
-          formulaEvaluata: null,
-          formula: null,
-        }
-      }
-
-      // At a made-to-order size the table has nothing to say, by construction.
-      // The value comes from the person issuing the bon, and is recorded as
-      // theirs — the one thing that must not happen here is a guess.
-      const manuala = valoriManuale.get(linie.id)
-      if (dimensiune.id === null && manuala !== undefined && manuala.trim() !== '') {
-        return {
-          neta: parseNumar(manuala, 'cantitate manuală', linie.nrLinie),
-          sursa: 'manual',
-          formulaEvaluata: null,
-          formula: null,
-        }
-      }
-
       // Missing is an error, never zero: a bon with a silent zero on the
       // upholstery line is a bon that gets produced with no fabric booked.
-      throw new EroareValoareLipsaPeDimensiune(linie.nrLinie, dimensiune.cod)
+      // A dimension added today starts without table values, and filling them
+      // in is the point of the per-dimension columns in the recipe grid.
+      if (valoare === undefined) {
+        throw new EroareValoareLipsaPeDimensiune(linie.nrLinie, dimensiune.cod)
+      }
+      return {
+        neta: parseNumar(valoare.cantitate, 'cantitate', linie.nrLinie),
+        sursa: 'tabel',
+        formulaEvaluata: null,
+        formula: null,
+      }
     }
 
     case 'formula': {
@@ -211,11 +163,10 @@ export interface CantitateLinie {
 export function cantitatiPeLinie(
   reteta: Reteta,
   dimensiune: DimensiuneCeruta,
-  valoriManuale: ReadonlyMap<string, string> = new Map(),
 ): CantitateLinie[] {
   return reteta.linii.map((linie) => {
     try {
-      const { neta, sursa } = cantitateNetaUnitara(linie, dimensiune, valoriManuale)
+      const { neta, sursa } = cantitateNetaUnitara(linie, dimensiune)
       return {
         linieId: linie.id,
         nrLinie: linie.nrLinie,
@@ -244,27 +195,10 @@ export function cantitatiPeLinie(
  */
 export function calculeazaConsumuri(intrare: IntrareCalcul): RezultatCalcul {
   const { reteta, dimensiune, alegeriMateriale } = intrare
-  const valoriManuale = intrare.valoriManuale ?? new Map<string, string>()
-
-  verificaInterval(dimensiune, intrare.interval)
 
   const cantitateProdus = parseNumar(intrare.cantitateProdus, 'cantitate produs')
   if (cantitateProdus.lessThanOrEqualTo(0)) {
     throw new EroareNumarInvalid('cantitate produs', intrare.cantitateProdus)
-  }
-
-  // Every missing table value at once, not the first one. Being sent back for
-  // the next number after typing the previous one is how a form loses a person.
-  if (dimensiune.id === null) {
-    const lipsa = reteta.linii
-      .filter(
-        (l) =>
-          l.modCalcul === 'tabel' &&
-          (valoriManuale.get(l.id) ?? '').trim() === '' &&
-          gasesteValoare(l, dimensiune.id) === undefined,
-      )
-      .map((l) => ({ nrLinie: l.nrLinie, grup: l.grup, um: l.um }))
-    if (lipsa.length > 0) throw new EroareValoareManualaLipsa(lipsa)
   }
 
   const acumulator = new Map<
@@ -284,7 +218,7 @@ export function calculeazaConsumuri(intrare: IntrareCalcul): RezultatCalcul {
       sursa,
       formulaEvaluata,
       formula,
-    } = cantitateNetaUnitara(linie, dimensiune, valoriManuale)
+    } = cantitateNetaUnitara(linie, dimensiune)
 
     const procent = parseNumar(linie.procentPierderi, 'procent_pierderi', linie.nrLinie)
     const factorPierderi = new D(1).plus(procent.dividedBy(100))

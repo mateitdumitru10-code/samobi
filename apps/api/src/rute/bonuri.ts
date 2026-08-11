@@ -6,7 +6,7 @@ import {
   productionOrderLine,
   sagaArticle,
 } from '@samobi/shared/db'
-import { EroareCalcul, EroareValoareManualaLipsa } from '@samobi/shared/calcul'
+import { EroareCalcul } from '@samobi/shared/calcul'
 import { schemaBonNou, schemaExport, schemaPrevizualizare } from '@samobi/shared/scheme'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
@@ -14,41 +14,13 @@ import { z } from 'zod'
 
 import { scrieAudit } from '../audit.js'
 import { autentifica, ceruRol, TOTI, utilizatorul, type VerificatorToken } from '../auth.js'
-import {
-  calculeazaCuDenumiri,
-  incarcaPentruCalcul,
-  type CerereDimensiune,
-} from '../bonuri/serviciu.js'
+import { calculeazaCuDenumiri, incarcaPentruCalcul } from '../bonuri/serviciu.js'
 import { db } from '../db.js'
 import { CerereInvalida, Conflict, NuExista } from '../erori.js'
 import { hashContinut, scrieExport, type RandExport } from '../export/xlsx.js'
 import { incarcaExport, linkSemnat } from '../export/stocare.js'
 
 const schemaId = z.object({ id: z.string().uuid('Identificator invalid.') })
-
-/** Which of the two shapes the request carried. The schema guarantees exactly one. */
-function cerereDimensiune(date: {
-  dimensiuneId?: string | undefined
-  dimensiune?: { lungime: string; latime: string; inaltime?: string | null | undefined } | undefined
-}): CerereDimensiune {
-  if (date.dimensiuneId !== undefined) return { dimensiuneId: date.dimensiuneId }
-  const d = date.dimensiune
-  if (d === undefined) throw new CerereInvalida('Lipsește dimensiunea.')
-  return { lungime: d.lungime, latime: d.latime, inaltime: d.inaltime ?? null }
-}
-
-/**
- * The structured part of a calculation failure.
- *
- * „Liniile 4, 9 sunt pe mod tabel" is a sentence; the screen needs the line
- * numbers to put an input box next to each of them.
- */
-function detaliiCalcul(err: EroareCalcul): unknown {
-  if (err instanceof EroareValoareManualaLipsa) {
-    return { cod: err.cod, liniiManuale: err.linii }
-  }
-  return { cod: err.cod, ...err.context }
-}
 
 export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
   const oricine = {
@@ -73,43 +45,12 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
       .from(dimension)
       .where(and(eq(dimension.modelId, id), eq(dimension.activ, true)))
 
-    const [modelul] = await db.select().from(model).where(eq(model.id, id)).limit(1)
-    if (modelul === undefined) throw new NuExista('Modelul nu există.')
-
-    const laComanda =
-      modelul.lungimeMin === null || modelul.latimeMin === null
-        ? null
-        : {
-            lungimeMin: modelul.lungimeMin,
-            lungimeMax: modelul.lungimeMax,
-            latimeMin: modelul.latimeMin,
-            latimeMax: modelul.latimeMax,
-            inaltimeMin: modelul.inaltimeMin,
-            inaltimeMax: modelul.inaltimeMax,
-            codSagaProdus: modelul.codSagaProdusComanda,
-            denumireProdus: null as string | null,
-          }
-
-    if (laComanda !== null && laComanda.codSagaProdus !== null) {
-      const [articol] = await db
-        .select({ denumire: sagaArticle.denumire })
-        .from(sagaArticle)
-        .where(eq(sagaArticle.codSaga, laComanda.codSagaProdus))
-        .limit(1)
-      laComanda.denumireProdus = articol?.denumire ?? null
-    }
-
     if (dimensiuneId === undefined) {
-      return { dimensiuni, laComanda, liniiVariabile: [], liniiTabel: [] }
+      return { dimensiuni, liniiVariabile: [] }
     }
 
-    const context = await incarcaPentruCalcul(id, { dimensiuneId })
-    return {
-      dimensiuni,
-      laComanda,
-      liniiVariabile: context.liniiVariabile,
-      liniiTabel: context.liniiTabel,
-    }
+    const context = await incarcaPentruCalcul(id, dimensiuneId)
+    return { dimensiuni, liniiVariabile: context.liniiVariabile }
   })
 
   /**
@@ -121,16 +62,10 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
   app.post('/bonuri/previzualizare', poateEmite, async (cerere) => {
     const date = schemaPrevizualizare.parse(cerere.body)
     try {
-      const { linii, rezultat } = await calculeazaCuDenumiri({
-        modelId: date.modelId,
-        dimensiune: cerereDimensiune(date),
-        cantitate: date.cantitate,
-        alegeri: date.alegeri,
-        valoriManuale: date.valoriManuale,
-      })
-      return { linii, dimensiune: rezultat.dimensiune }
+      const { linii } = await calculeazaCuDenumiri(date)
+      return { linii }
     } catch (err) {
-      if (err instanceof EroareCalcul) throw new CerereInvalida(err.message, detaliiCalcul(err))
+      if (err instanceof EroareCalcul) throw new CerereInvalida(err.message)
       throw err
     }
   })
@@ -141,43 +76,20 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
 
     let calcul
     try {
-      calcul = await calculeazaCuDenumiri({
-        modelId: date.modelId,
-        dimensiune: cerereDimensiune(date),
-        cantitate: date.cantitate,
-        alegeri: date.alegeri,
-        valoriManuale: date.valoriManuale,
-      })
+      calcul = await calculeazaCuDenumiri(date)
     } catch (err) {
-      if (err instanceof EroareCalcul) throw new CerereInvalida(err.message, detaliiCalcul(err))
+      if (err instanceof EroareCalcul) throw new CerereInvalida(err.message)
       throw err
     }
 
     const dimensiune = calcul.rezultat.dimensiune
 
-    /**
-     * A one-off article the accountant pre-created wins over the model's
-     * generic one — that is what it is for. Everything else falls back to what
-     * the dimension or the model carries.
-     */
-    const codSagaProdus = date.codSagaProdus ?? calcul.context.codSagaProdus
+    const codSagaProdus = calcul.context.codSagaProdus
     if (codSagaProdus === null) {
       throw new CerereInvalida(
-        dimensiune.id === null
-          ? 'Modelul acceptă dimensiuni la comandă, dar nu are cod de predare pentru ele. ' +
-            'Tehnologul îl leagă la „Modele și rețete".'
-          : `Dimensiunea ${dimensiune.cod} nu are cod de produs finit în SAGA. ` +
-            'Leagă-l înainte de a emite bonul.',
+        `Dimensiunea ${dimensiune.cod} nu are cod de produs finit în SAGA. ` +
+          'Leagă-l înainte de a emite bonul.',
       )
-    }
-
-    const [articolProdus] = await db
-      .select({ tip: sagaArticle.tip })
-      .from(sagaArticle)
-      .where(eq(sagaArticle.codSaga, codSagaProdus))
-      .limit(1)
-    if (articolProdus === undefined) {
-      throw new CerereInvalida(`Codul de produs ${codSagaProdus} nu există în nomenclator.`)
     }
 
     const bon = await db.transaction(async (tx) => {
@@ -188,9 +100,9 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
           data: date.data,
           gestiuneProdus: date.gestiuneProdus,
           modelId: date.modelId,
-          dimensionId: dimensiune.id,
-          // The measurements, not just the row they came from: a dimension can
-          // be renamed and a made-to-order size has no row at all.
+          dimensionId: dimensiune.id ?? '',
+          // The measurements, not just the row they came from: a dimension row
+          // is editable until a bon lands on it.
           lungime: dimensiune.lungime,
           latime: dimensiune.latime,
           inaltime: dimensiune.inaltime,
@@ -232,12 +144,7 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
       entitate: 'production_order',
       entitateId: bon?.id ?? '',
       actiune: 'creare',
-      diff: {
-        model: date.modelId,
-        dimensiune: dimensiune.cod,
-        laComanda: dimensiune.id === null ? 'da' : 'nu',
-        cantitate: date.cantitate,
-      },
+      diff: { model: date.modelId, dimensiune: dimensiune.cod, cantitate: date.cantitate },
     })
 
     return raspuns.status(201).send({ ...bon, linii: calcul.linii })
@@ -262,16 +169,11 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
         modelCod: model.cod,
         modelDenumire: model.denumire,
         dimensiuneCod: dimension.cod,
-        lungime: productionOrder.lungime,
-        latime: productionOrder.latime,
-        inaltime: productionOrder.inaltime,
         denumireProdus: sagaArticle.denumire,
       })
       .from(productionOrder)
       .innerJoin(model, eq(model.id, productionOrder.modelId))
-      // A made-to-order bon has no dimension row, so this cannot be an inner
-      // join any more — it would silently hide exactly the new bons.
-      .leftJoin(dimension, eq(dimension.id, productionOrder.dimensionId))
+      .innerJoin(dimension, eq(dimension.id, productionOrder.dimensionId))
       .leftJoin(sagaArticle, eq(sagaArticle.codSaga, productionOrder.codSagaProdus))
       .where(status === undefined ? undefined : eq(productionOrder.status, status))
       .orderBy(desc(productionOrder.creatLa))

@@ -7,7 +7,6 @@ import { CautaArticol } from '../ui/CautaArticol.js'
 import { useNotificari } from '../ui/Notificari.js'
 import { BannerEroare, Gol, Insigna, Schelet, mesajEroare } from '../ui/stari.js'
 
-import { LaComanda, type ModelLaComanda } from './LaComanda.js'
 import { RetetaEditor } from './RetetaEditor.js'
 
 interface RandModel {
@@ -32,7 +31,7 @@ interface Dimensiune {
   activ: boolean
 }
 
-interface Detaliu extends RandModel, ModelLaComanda {
+interface Detaliu extends RandModel {
   dimensiuni: Dimensiune[]
 }
 
@@ -280,8 +279,6 @@ function DetaliuModel({
 
       <Dimensiuni modelId={modelId} dimensiuni={detaliu.data.dimensiuni} />
 
-      <LaComanda model={detaliu.data} />
-
       <div>
         <h3 className="mb-3 text-sm font-semibold text-ink">Rețetă</h3>
         <RetetaEditor modelId={modelId} onModificat={onModificat} />
@@ -333,8 +330,14 @@ function Dimensiuni({ modelId, dimensiuni }: { modelId: string; dimensiuni: Dime
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ink">Dimensiuni</h3>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Dimensiuni</h3>
+          <p className="text-sm text-ink-muted">
+            Bonurile se emit pe dimensiunile de aici. Pentru o mărime nouă, adaug-o —
+            rețeta rămâne aceeași.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setDeschis((d) => !d)}

@@ -1,27 +1,12 @@
-import {
-  dimension,
-  model,
-  productionOrder,
-  recipe,
-  recipeLine,
-  recipeLineDimension,
-  sagaArticle,
-} from '@samobi/shared/db'
-import {
-  cantitatiPeLinie,
-  EroareCalcul,
-  valideazaFormulaPeInterval,
-  type DimensiuneCeruta,
-} from '@samobi/shared/calcul'
+import { dimension, model, productionOrder, recipe, sagaArticle } from '@samobi/shared/db'
+import { cantitatiPeLinie, type DimensiuneCeruta } from '@samobi/shared/calcul'
 import {
   schemaDimensiune,
   schemaDimensiuneBaza,
-  schemaLaComanda,
   schemaModel,
   schemaModificareModel,
-  type LaComanda,
 } from '@samobi/shared/scheme'
-import { and, asc, count, desc, eq, inArray, ne } from 'drizzle-orm'
+import { and, asc, count, eq, ne } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -40,120 +25,6 @@ const schemaIdDimensiune = z.object({
 /** Postgres unique-violation, which is how a duplicate code announces itself. */
 function esteDuplicat(err: unknown): boolean {
   return codPostgres(err) === '23505'
-}
-
-export interface AvertismentLaComanda {
-  fel: 'formula' | 'tabel' | 'override' | 'cod-lipsa'
-  nrLinie: number | null
-  mesaj: string
-}
-
-/**
- * What would go wrong if this model were issued at the extremes of its range.
- *
- * Three species of silent nonsense, and only the first is mechanical: a formula
- * that stops being a positive number. The other two are judgement — a `tabel`
- * line has no value at an unregistered size and will be asked of the operator,
- * and an override never fires at one, so the formula it was created to correct
- * runs instead. Both are worth saying out loud once, here.
- */
-async function verificaFormulele(
-  modelId: string,
-  interval: LaComanda,
-): Promise<AvertismentLaComanda[]> {
-  if (interval.lungimeMin === null || interval.latimeMin === null) return []
-
-  const versiuni = await db
-    .select()
-    .from(recipe)
-    .where(eq(recipe.modelId, modelId))
-    .orderBy(desc(recipe.versiune))
-  const reteta = versiuni.find((r) => r.status === 'activa') ?? versiuni[0]
-  if (reteta === undefined) return []
-
-  const linii = await db
-    .select()
-    .from(recipeLine)
-    .where(eq(recipeLine.recipeId, reteta.id))
-    .orderBy(asc(recipeLine.nrLinie))
-
-  const valori =
-    linii.length === 0
-      ? []
-      : await db
-          .select()
-          .from(recipeLineDimension)
-          .where(
-            inArray(
-              recipeLineDimension.recipeLineId,
-              linii.map((l) => l.id),
-            ),
-          )
-
-  const numere = {
-    lungimeMin: Number(interval.lungimeMin),
-    lungimeMax: Number(interval.lungimeMax),
-    latimeMin: Number(interval.latimeMin),
-    latimeMax: Number(interval.latimeMax),
-    inaltimeMin: interval.inaltimeMin === null ? null : Number(interval.inaltimeMin),
-    inaltimeMax: interval.inaltimeMax === null ? null : Number(interval.inaltimeMax),
-  }
-
-  const avertismente: AvertismentLaComanda[] = []
-
-  if (interval.codSagaProdusComanda === null) {
-    avertismente.push({
-      fel: 'cod-lipsa',
-      nrLinie: null,
-      mesaj:
-        'Modelul nu are cod de predare pentru dimensiunile la comandă. Bonurile vor fi blocate ' +
-        'până îl legi.',
-    })
-  }
-
-  for (const linie of linii) {
-    if (linie.modCalcul === 'formula' && linie.formula !== null) {
-      try {
-        const rele = valideazaFormulaPeInterval(linie.formula, numere, linie.nrLinie)
-        for (const punct of rele) {
-          avertismente.push({
-            fel: 'formula',
-            nrLinie: linie.nrLinie,
-            mesaj:
-              `„${linie.formula}" ${punct.motiv} la ${punct.L}×${punct.l}` +
-              `${punct.H === null ? '' : `×${punct.H}`}.`,
-          })
-        }
-      } catch (err) {
-        if (err instanceof EroareCalcul) {
-          avertismente.push({ fel: 'formula', nrLinie: linie.nrLinie, mesaj: err.message })
-        } else throw err
-      }
-    }
-
-    if (linie.modCalcul === 'tabel') {
-      avertismente.push({
-        fel: 'tabel',
-        nrLinie: linie.nrLinie,
-        mesaj:
-          `Linia e pe mod „tabel" (${linie.grup}, ${linie.um}). La fiecare bon la comandă, ` +
-          'cantitatea va fi cerută operatorului.',
-      })
-    }
-
-    const areOverride = valori.some((v) => v.recipeLineId === linie.id && v.esteOverride)
-    if (areOverride) {
-      avertismente.push({
-        fel: 'override',
-        nrLinie: linie.nrLinie,
-        mesaj:
-          'Linia are o valoare fixată manual pe o dimensiune înregistrată. La comandă nu se ' +
-          'aplică — se folosește formula liniei.',
-      })
-    }
-  }
-
-  return avertismente
 }
 
 export function ruteModele(app: FastifyInstance, verifica: VerificatorToken) {
@@ -266,80 +137,7 @@ export function ruteModele(app: FastifyInstance, verifica: VerificatorToken) {
       .where(eq(dimension.modelId, id))
       .orderBy(asc(dimension.cod))
 
-    // The made-to-order article's name, so the card can show what the code is
-    // rather than only that there is one.
-    let denumireProdusComanda: string | null = null
-    if (gasit.codSagaProdusComanda !== null) {
-      const [articol] = await db
-        .select({ denumire: sagaArticle.denumire })
-        .from(sagaArticle)
-        .where(eq(sagaArticle.codSaga, gasit.codSagaProdusComanda))
-        .limit(1)
-      denumireProdusComanda = articol?.denumire ?? null
-    }
-
-    return {
-      ...gasit,
-      modificatLa: gasit.modificatLa.toISOString(),
-      denumireProdusComanda,
-      dimensiuni,
-    }
-  })
-
-  /**
-   * Opens a model to made-to-order sizes, or closes it.
-   *
-   * The range is a claim that the recipe's formulas hold across it, so this is
-   * where that claim is checked: every formula is evaluated at the corners of
-   * the declared interval, and the ones that stop making sense are reported
-   * rather than discovered by an operator with a customer on the phone. They
-   * are reported, not refused — the tehnolog may be declaring the range first
-   * and fixing the formulas next, and blocking that order of work helps nobody.
-   */
-  app.put('/modele/:id/la-comanda', doarTehnolog, async (cerere) => {
-    const { id } = schemaId.parse(cerere.params)
-    const date = schemaLaComanda.parse(cerere.body)
-    const utilizator = utilizatorul(cerere)
-
-    const [existent] = await db.select().from(model).where(eq(model.id, id)).limit(1)
-    if (existent === undefined) throw new NuExista('Modelul nu există.')
-
-    const cod = date.codSagaProdusComanda === '' ? null : date.codSagaProdusComanda
-    if (cod !== null) {
-      const [articol] = await db
-        .select({ tip: sagaArticle.tip })
-        .from(sagaArticle)
-        .where(eq(sagaArticle.codSaga, cod))
-        .limit(1)
-      if (articol === undefined) throw new CerereInvalida(`Codul ${cod} nu există în nomenclator.`)
-      if (articol.tip !== 'produs') {
-        throw new CerereInvalida(`Codul ${cod} nu este produs finit în SAGA, ci ${articol.tip}.`)
-      }
-    }
-
-    const [actualizat] = await db
-      .update(model)
-      .set({
-        lungimeMin: date.lungimeMin,
-        lungimeMax: date.lungimeMax,
-        latimeMin: date.latimeMin,
-        latimeMax: date.latimeMax,
-        inaltimeMin: date.inaltimeMin,
-        inaltimeMax: date.inaltimeMax,
-        codSagaProdusComanda: cod,
-      })
-      .where(eq(model.id, id))
-      .returning()
-
-    await scrieAudit(cerere, {
-      userId: utilizator.id,
-      entitate: 'model',
-      entitateId: id,
-      actiune: 'modificare',
-      diff: { laComanda: date },
-    })
-
-    return { ...actualizat, avertismente: await verificaFormulele(id, date) }
+    return { ...gasit, modificatLa: gasit.modificatLa.toISOString(), dimensiuni }
   })
 
   /**
@@ -376,8 +174,8 @@ export function ruteModele(app: FastifyInstance, verifica: VerificatorToken) {
       inaltime: d.inaltime,
     }))
 
-    // A trial size, so a formula can be pushed past the registered sizes before
-    // anybody is asked to build one.
+    // A trial size, so a formula can be pushed past the registered ones before
+    // anybody adds a dimension for it.
     if (proba.lungime !== undefined && proba.latime !== undefined) {
       const cod = `${proba.lungime}×${proba.latime}${
         proba.inaltime === undefined ? '' : `×${proba.inaltime}`

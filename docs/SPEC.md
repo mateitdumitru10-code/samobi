@@ -56,38 +56,20 @@ valoarea din experiență. Sistemul trebuie să o accepte ca atare.
 anume. Override-ul are prioritate absolută asupra formulei și se afișează vizibil marcat,
 cu autorul și motivul.
 
-### Dimensiuni la comandă
+### Dimensiuni noi
 
-Un model poate fi deschis către dimensiuni pe care nu le-a înregistrat nimeni: clientul
-cere 2150 × 1450, iar bonul se calculează exact pe măsurile alea.
-
-Se declară pe model un **interval** per axă (mm). În afara lui, bonul e **refuzat**, nu
-aproximat — o formulă e o afirmație despre un interval, nu despre un punct, iar
-extrapolarea trece tăcut peste marginile de panou și de balot. La declararea intervalului,
-fiecare formulă din rețetă se evaluează în cele 8 colțuri ale lui; ce nu dă un număr
-finit și pozitiv se raportează pe loc.
-
-Comportamentul per mod de calcul, la o dimensiune la comandă:
-
-| Mod | Ce se întâmplă |
-|---|---|
-| `fixa` | constanta se aplică neschimbată — asta e definiția ei |
-| `formula` | se evaluează pe L, l, H cerute, în interval |
-| `tabel` | **nu există valoare de căutat.** Cantitatea se cere celui care emite bonul și se înregistrează cu `sursa = 'manual'` |
-
-`tabel` nu se interpolează, niciodată. Valoarea lui e o croială decisă de un om, nu o
-funcție continuă de L și l: la trecerea peste lățimea balotului consumul sare cu o lățime
-întreagă, iar o interpolare liniară trece drept prin salt și subestimează exact materialul
-cel mai scump din produs.
+Bonurile se emit **numai pe dimensiuni înregistrate**, fiindcă dimensiunea e cea care
+poartă codul de produs finit din SAGA. Când apare o mărime nouă, se adaugă un rând în
+tabelul de dimensiuni al modelului — rețeta rămâne aceeași, iar formulele se evaluează
+pe noile L, l, H.
 
 **Materiale în trepte.** PAL-ul vine în panouri, stofa în baloturi de lățime fixă.
-Se modelează în formulă, cu `ceil`: `ceil(l/1400) * (L+200)/1000` înseamnă „câte lățimi de
-balot, ori lungimea fiecăreia". Nu există optimizator de croire și nu se va construi unul.
+Se modelează în formulă, cu `ceil`: `ceil(l/1400) * (L+200)/1000` înseamnă „câte lățimi
+de balot, ori lungimea fiecăreia". Nu există optimizator de croire și nu se va construi
+unul.
 
-**Predarea în SAGA.** O dimensiune la comandă nu are cod de articol propriu, iar aplicația
-nu poate inventa unul — nomenclatorul e import într-un singur sens. Contabilul creează un
-articol generic per model („PAT DAVID DIMENSIUNE SPECIALĂ"), se leagă o dată, și toate
-bonurile la comandă ale modelului se predau pe el. Măsurile reale rămân pe bon, aici.
+O dimensiune nouă începe fără valori pe liniile `tabel` — se completează în coloana ei
+din grila de rețete. Lipsa lor e eroare la emiterea bonului, nu zero.
 
 ### Grupuri de opțiune
 
@@ -332,14 +314,9 @@ Funcție pură, în `packages/shared/src/calcul/`, fără acces la bază de date
 ```ts
 calculeazaConsumuri(input: {
   reteta: Recipe & { linii: RecipeLine[] },
-  /** `id: null` = dimensiune la comandă */
   dimensiune: DimensiuneCeruta,
   cantitateProdus: Decimal,
   alegeriMateriale: Map<lineId, codSaga>,
-  /** intervalul modelului; obligatoriu la o dimensiune la comandă */
-  interval?: IntervalDimensiuni | null,
-  /** cantități introduse la bon, pentru liniile `tabel` la comandă */
-  valoriManuale?: Map<lineId, string>,
 }): ConsumLine[]
 ```
 
@@ -349,8 +326,7 @@ Algoritm, per linie:
    → folosește acea valoare. **Prioritate absolută.**
 2. Altfel, după `mod_calcul`:
    - `fixa` → `cantitate_fixa`
-   - `tabel` → valoarea din `recipe_line_dimension`; la o dimensiune la comandă,
-     valoarea introdusă la bon; lipsă → **eroare**, nu zero
+   - `tabel` → valoarea din `recipe_line_dimension`; lipsă → **eroare**, nu zero
    - `formula` → evaluează cu scope `{ L, l, H }`
 3. `cantitate_bruta = cantitate_neta * (1 + procent_pierderi/100)`
 4. Înmulțește cu `cantitateProdus`
