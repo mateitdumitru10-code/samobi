@@ -25,6 +25,11 @@ import { clientSql, db } from '../src/db.js'
  * what was asked for; a short list of functional words keeps them out, along
  * with the wadding and the webbing.
  *
+ * TESATURA POLIESTER is the exception the list cannot express. It is a plain
+ * fabric, and in a recipe where nothing else is chosen it is what covers the
+ * product; in a recipe that already has a branded fabric it is the lining
+ * underneath. So it is judged by the company it keeps rather than by its name.
+ *
  *   pnpm --filter @samobi/api marcheaza-textile
  *   pnpm --filter @samobi/api marcheaza-textile -- --scrie
  */
@@ -67,6 +72,9 @@ const CUVINTE_FUNCTIONALE = [
 const esteFunctional = (denumire: string): boolean =>
   CUVINTE_FUNCTIONALE.some((cuvant) => denumire.toUpperCase().startsWith(cuvant))
 
+/** The plain fabric that is a cover in some recipes and a lining in others. */
+const TESATURA_SIMPLA = 'TESATURA POLIESTER'
+
 // ---------------------------------------------------------------------------
 
 interface Linie {
@@ -98,6 +106,24 @@ for (const l of linii) repetari.set(l.cod_saga, (repetari.get(l.cod_saga) ?? 0) 
 const textile = linii.filter(
   (l) => !esteFunctional(l.denumire) && (repetari.get(l.cod_saga) ?? 0) <= REPETARI_MAXIME,
 )
+
+// Second pass, for the recipes with no branded fabric in them at all: there the
+// plain polyester is what the product is covered in, and it is as much a choice
+// as any other. The test has to ask the database, not just this run — the lines
+// marked on an earlier pass are filtered out of the query above, and without
+// them every recipe looks bare.
+const marcateDeja = new Set(
+  (
+    await clientSql<{ recipe_id: string }[]>`
+      select distinct recipe_id from recipe_line where este_variabil`
+  ).map((r) => r.recipe_id),
+)
+const cuStofa = new Set([...textile.map((l) => l.recipe_id), ...marcateDeja])
+const simple = linii.filter(
+  (l) => l.denumire.toUpperCase() === TESATURA_SIMPLA && !cuStofa.has(l.recipe_id),
+)
+textile.push(...simple)
+
 const excluse = linii.filter((l) => !textile.includes(l))
 
 const peModel = new Map<string, Linie[]>()
@@ -107,7 +133,12 @@ for (const l of textile) {
   peModel.set(l.model, grup)
 }
 
-console.log(`\n${textile.length} linii de stofă, pe ${peModel.size} rețete din ${new Set(linii.map((l) => l.model)).size}:\n`)
+console.log(
+  `\n${textile.length} linii de stofă, pe ${peModel.size} rețete din ` +
+    `${new Set(linii.map((l) => l.model)).size}` +
+    (simple.length > 0 ? `, din care ${simple.length} sunt ${TESATURA_SIMPLA}` : '') +
+    ':\n',
+)
 for (const [model, grup] of [...peModel].sort()) {
   for (const l of grup) {
     console.log(
