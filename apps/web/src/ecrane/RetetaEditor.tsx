@@ -1118,10 +1118,18 @@ export function RetetaEditor({
           value was pinned, the formula check, the comparison across sizes. All
           three used to be open at once, which is most of the page's scroll for
           panels that say nothing on a normal recipe. */}
-      {dimensiuni.length > 1 && (
+      {/*
+        Shown whatever the model has, not only when it has two sizes. Almost
+        every model here carries exactly one, and this panel is where a formula
+        can be pushed to a size that does not exist yet — which is the whole
+        question someone asks after writing one.
+      */}
+      {dimensiuni.length > 0 && (
         <details className="card p-0">
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink">
-            Compară dimensiunile
+            {dimensiuni.length > 1
+              ? 'Compară dimensiunile'
+              : 'Vezi cum se schimbă cantitățile pe altă dimensiune'}
           </summary>
           <div className="border-t border-line p-4">
             <ComparatieDimensiuni modelId={modelId} />
