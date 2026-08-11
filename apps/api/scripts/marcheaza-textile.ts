@@ -11,15 +11,18 @@ import { clientSql, db } from '../src/db.js'
  * from SAGA name whichever fabric that particular run happened to use, which is
  * exactly the thing that must not be frozen into the recipe.
  *
- * Which line is the fabric is decided by how often the article repeats. What a
- * customer chooses cannot be the same article on a quarter of the catalogue:
- * OPTIMA 912 appears at half a metre in nine of the thirty-eight recipes and is
- * plainly a fixed detail, while every brand name a buyer picks — QUELLE 83,
- * VELVET 277, MANGO 1301 — shows up once or twice.
+ * Two things decide which line is the fabric, and neither works alone.
  *
- * Quantity does not decide it. An earlier cut at three metres threw out the
- * secondary fabrics — a metre of VELVET 225 beside ten of VELVET 277 — and
- * those are chosen exactly like the main one.
+ * Rarity first: what a customer chooses cannot be the same article across the
+ * range. QUELLE 83, VELVET 277, MANGO 1301 each show up once or twice; OPTIMA
+ * 912 runs through sixteen recipes.
+ *
+ * Then metreage, but only for the ones that do repeat. OPTIMA and SHINY are on
+ * a great many products and never exceed two metres — a trim, not a cover — so
+ * they stay fixed, while TOSCANA 201 reaches 3,2 and is chosen. Quantity alone
+ * would be wrong: an early cut at three metres threw out a metre of VELVET 225
+ * sitting beside ten of VELVET 277, and that is chosen exactly like the main
+ * one.
  *
  * Zips are a choice too, their colour following the fabric, but they are not
  * what was asked for; a short list of functional words keeps them out, along
@@ -36,8 +39,11 @@ import { clientSql, db } from '../src/db.js'
 
 const scrie = process.argv.slice(2).includes('--scrie')
 
-/** Above this many recipes, an article is part of the product, not a choice. */
+/** Up to this many recipes, an article is rare enough to be a choice outright. */
 const REPETARI_MAXIME = 3
+
+/** Below this, on every recipe it appears in, it trims rather than covers. */
+const METRAJ_DE_HUSA = 3
 
 /**
  * Names that describe a function rather than a fabric. Everything a customer
@@ -101,11 +107,22 @@ const linii = await clientSql<Linie[]>`
   order by m.cod, rl.nr_linie`
 
 const repetari = new Map<string, number>()
-for (const l of linii) repetari.set(l.cod_saga, (repetari.get(l.cod_saga) ?? 0) + 1)
+const metrajMaxim = new Map<string, number>()
+for (const l of linii) {
+  repetari.set(l.cod_saga, (repetari.get(l.cod_saga) ?? 0) + 1)
+  metrajMaxim.set(
+    l.cod_saga,
+    Math.max(metrajMaxim.get(l.cod_saga) ?? 0, Number(l.cantitate_fixa)),
+  )
+}
 
-const textile = linii.filter(
-  (l) => !esteFunctional(l.denumire) && (repetari.get(l.cod_saga) ?? 0) <= REPETARI_MAXIME,
-)
+const esteStofa = (l: Linie): boolean => {
+  if (esteFunctional(l.denumire)) return false
+  if ((repetari.get(l.cod_saga) ?? 0) <= REPETARI_MAXIME) return true
+  return (metrajMaxim.get(l.cod_saga) ?? 0) >= METRAJ_DE_HUSA
+}
+
+const textile = linii.filter(esteStofa)
 
 // Second pass, for the recipes with no branded fabric in them at all: there the
 // plain polyester is what the product is covered in, and it is as much a choice
@@ -156,7 +173,7 @@ if (faraStofa.length > 0) {
 
 console.log(
   `\n${excluse.length} linii în ML/M lăsate fixe — funcționale, sau în peste ` +
-    `${REPETARI_MAXIME} rețete:`,
+    `${REPETARI_MAXIME} rețete fără să treacă vreodată de ${METRAJ_DE_HUSA} m:`,
 )
 const dupaDenumire = new Map<string, number>()
 for (const l of excluse) {
