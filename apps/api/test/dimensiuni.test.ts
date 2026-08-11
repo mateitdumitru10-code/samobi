@@ -183,4 +183,42 @@ describe.skipIf(!areBazaDeDate)('dimensiuni noi', () => {
     expect(res.statusCode).toBe(409)
     expect((res.json() as { mesaj: string }).mesaj).toMatch(/bonuri emise/i)
   })
+
+  it('lasă redenumirea unei dimensiuni cu bonuri, chiar dacă se retrimit măsurile', async () => {
+    const dimensiuneId = await adaugaDimensiune('2000x2200', '2000', '2200')
+
+    await app.inject({
+      method: 'POST',
+      url: '/bonuri',
+      headers: antet('operator'),
+      payload: {
+        modelId,
+        dimensiuneId,
+        cantitate: '1',
+        data: new Date().toISOString().slice(0, 10),
+        gestiuneProdus: 'MATERII PRIME',
+      },
+    })
+
+    // The edit form sends every field. „2000" against a stored „2000.000000"
+    // is not a change, and refusing it would block the one edit that is always
+    // allowed on a dimension that has been used.
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/modele/${modelId}/dimensiuni/${dimensiuneId}`,
+      headers: antet('operator'),
+      payload: { cod: 'STANDARD-2200', lungime: '2000', latime: '2200', inaltime: '350' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect((res.json() as { cod: string }).cod).toBe('STANDARD-2200')
+
+    // Scoaterea înălțimii rămâne o schimbare de măsuri, și tot refuzată.
+    const faraInaltime = await app.inject({
+      method: 'PATCH',
+      url: `/modele/${modelId}/dimensiuni/${dimensiuneId}`,
+      headers: antet('operator'),
+      payload: { cod: 'STANDARD-2200', lungime: '2000', latime: '2200', inaltime: null },
+    })
+    expect(faraInaltime.statusCode).toBe(409)
+  })
 })

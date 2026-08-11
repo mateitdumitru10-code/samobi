@@ -270,8 +270,31 @@ export function ruteModele(app: FastifyInstance, verifica: VerificatorToken) {
     const date = schemaDimensiuneBaza.partial().extend({ activ: z.boolean().optional() }).parse(cerere.body)
     const utilizator = utilizatorul(cerere)
 
+    const [curenta] = await db
+      .select()
+      .from(dimension)
+      .where(and(eq(dimension.id, dimensiuneId), eq(dimension.modelId, id)))
+      .limit(1)
+    if (curenta === undefined) throw new NuExista('Dimensiunea nu există.')
+
+    /**
+     * A measurement counts as changed only if it differs from what is stored.
+     *
+     * The edit form sends every field, so „rename the size" arrived as a write
+     * to `lungime` as well and was refused on any dimension that had bons —
+     * blocking the one edit that is always allowed. Compared numerically:
+     * `numeric(18,6)` comes back as „2000.000000" and the form sends „2000".
+     */
+    const difera = (nou: string | null | undefined, vechi: string | null): boolean => {
+      if (nou === undefined) return false
+      if (nou === null || vechi === null) return nou !== vechi
+      return Number(nou) !== Number(vechi)
+    }
+
     const schimbaMasuri =
-      date.lungime !== undefined || date.latime !== undefined || date.inaltime !== undefined
+      difera(date.lungime, curenta.lungime) ||
+      difera(date.latime, curenta.latime) ||
+      difera(date.inaltime, curenta.inaltime)
 
     if (schimbaMasuri) {
       const [cuBonuri] = await db

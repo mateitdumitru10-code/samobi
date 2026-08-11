@@ -332,46 +332,36 @@ function DetaliuModel({
   )
 }
 
+/**
+ * The sizes a model is built in.
+ *
+ * Editable after the fact, and deliberately so: a size gets entered as whatever
+ * the first bon needed, and the real standard shows up later. The measurements
+ * do freeze once a bon has been issued against them — the API refuses that, and
+ * rightly: the consumptions on that bon were computed from those numbers. The
+ * label and the SAGA article stay editable in every case; they name the thing,
+ * they are not inputs to the calculation.
+ */
 function Dimensiuni({ modelId, dimensiuni }: { modelId: string; dimensiuni: Dimensiune[] }) {
   const queryClient = useQueryClient()
   const notificari = useNotificari()
-  const [deschis, setDeschis] = useState(false)
-  const [cod, setCod] = useState('')
-  const [lungime, setLungime] = useState('')
-  const [latime, setLatime] = useState('')
-  const [inaltime, setInaltime] = useState('')
-  const [produs, setProdus] = useState<{ codSaga: string; denumire: string } | null>(null)
+  /** null = closed, 'nou' = the add form, otherwise the id being edited. */
+  const [deschis, setDeschis] = useState<string | null>(null)
 
-  const creeaza = useMutation({
-    mutationFn: () =>
-      apel(`/modele/${modelId}/dimensiuni`, {
-        metoda: 'POST',
-        corp: {
-          cod,
-          lungime,
-          latime,
-          inaltime: inaltime === '' ? null : inaltime,
-          codSagaProdus: produs?.codSaga ?? null,
-        },
-      }),
-    onSuccess: async () => {
-      notificari.succes(`Dimensiunea ${cod} a fost adăugată.`)
-      setCod('')
-      setLungime('')
-      setLatime('')
-      setInaltime('')
-      setProdus(null)
-      setDeschis(false)
-      await queryClient.invalidateQueries({ queryKey: ['model', modelId] })
-      await queryClient.invalidateQueries({ queryKey: ['reteta', modelId] })
-    },
+  const active = dimensiuni.filter((d) => d.activ)
+  const inactive = dimensiuni.filter((d) => !d.activ)
+
+  const reimprospateaza = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['model', modelId] })
+    await queryClient.invalidateQueries({ queryKey: ['reteta', modelId] })
+  }
+
+  const reactiveaza = useMutation({
+    mutationFn: (id: string) =>
+      apel(`/modele/${modelId}/dimensiuni/${id}`, { metoda: 'PATCH', corp: { activ: true } }),
+    onSuccess: reimprospateaza,
     onError: (e) => notificari.eroare(mesajEroare(e)),
   })
-
-  function trimite(eveniment: FormEvent) {
-    eveniment.preventDefault()
-    creeaza.mutate()
-  }
 
   return (
     <div className="rounded-lg border border-line bg-surface px-3 py-2">
@@ -381,8 +371,17 @@ function Dimensiuni({ modelId, dimensiuni }: { modelId: string; dimensiuni: Dime
         {/* Ninety-six of ninety-eight models have exactly one. A table with a
             header row, for one row of data, above the thing actually being
             edited. */}
-        {dimensiuni.map((d) => (
-          <span key={d.id} className="flex items-center gap-2">
+        {active.map((d) => (
+          <button
+            key={d.id}
+            type="button"
+            onClick={() => setDeschis((curent) => (curent === d.id ? null : d.id))}
+            aria-expanded={deschis === d.id}
+            title="Modifică dimensiunea"
+            className={`flex items-center gap-2 rounded-md px-2 py-0.5 text-left ${
+              deschis === d.id ? 'bg-brand-subtle' : 'hover:bg-surface-sunken'
+            }`}
+          >
             <span className="font-medium text-ink">{d.cod}</span>
             <span className="tabular-nums text-ink-secondary">
               {mm(d.lungime)}×{mm(d.latime)}
@@ -398,80 +397,206 @@ function Dimensiuni({ modelId, dimensiuni }: { modelId: string; dimensiuni: Dime
                 {d.codSagaProdus}
               </span>
             )}
-          </span>
+          </button>
         ))}
 
-        {dimensiuni.length === 0 && (
+        {active.length === 0 && (
           <span className="text-atentie">
             niciuna — rețeta are nevoie de cel puțin una ca să se emită bonuri
           </span>
         )}
 
+        {inactive.map((d) => (
+          <span key={d.id} className="flex items-center gap-1.5 text-xs text-ink-muted">
+            <span className="line-through">{d.cod}</span>
+            <button
+              type="button"
+              disabled={reactiveaza.isPending}
+              onClick={() => reactiveaza.mutate(d.id)}
+              className="text-brand underline underline-offset-2"
+            >
+              reactivează
+            </button>
+          </span>
+        ))}
+
         <button
           type="button"
-          onClick={() => setDeschis((d) => !d)}
+          onClick={() => setDeschis((curent) => (curent === 'nou' ? null : 'nou'))}
           className="ml-auto text-xs text-brand underline underline-offset-2"
         >
-          {deschis ? 'renunță' : '+ adaugă'}
+          {deschis === 'nou' ? 'renunță' : '+ adaugă'}
         </button>
       </div>
 
-      {deschis && (
-        <form onSubmit={trimite} className="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3">
-          <Camp eticheta="Cod" valoare={cod} set={setCod} latime="w-32" placeholder="2000x1600" />
-          <Camp
-            eticheta="Lungime (mm)"
-            valoare={lungime}
-            set={setLungime}
-            latime="w-28"
-            placeholder="2000"
+      {deschis === 'nou' && (
+        <FormaDimensiune
+          modelId={modelId}
+          onGata={() => setDeschis(null)}
+          onSalvat={reimprospateaza}
+        />
+      )}
+      {active
+        .filter((d) => d.id === deschis)
+        .map((d) => (
+          <FormaDimensiune
+            key={d.id}
+            modelId={modelId}
+            dimensiune={d}
+            onGata={() => setDeschis(null)}
+            onSalvat={reimprospateaza}
           />
-          <Camp
-            eticheta="Lățime (mm)"
-            valoare={latime}
-            set={setLatime}
-            latime="w-28"
-            placeholder="1600"
-          />
-          <Camp
-            eticheta="Înălțime (mm)"
-            valoare={inaltime}
-            set={setInaltime}
-            latime="w-28"
-            placeholder="350"
-            optional
-          />
+        ))}
+    </div>
+  )
+}
 
-          <div>
-            <span className="eticheta">Produs finit în SAGA</span>
-            {produs === null ? (
-              <CautaArticol
-                clasa="camp w-72"
-                placeholder="caută produsul finit…"
-                onAlege={(a) => setProdus({ codSaga: a.codSaga, denumire: a.denumire })}
-              />
-            ) : (
-              <span className="flex h-10 items-center gap-2 text-sm">
-                <span className="font-mono text-xs">{produs.codSaga}</span>
-                <span className="text-ink">{produs.denumire}</span>
-                <button
-                  type="button"
-                  onClick={() => setProdus(null)}
-                  className="text-xs text-brand underline underline-offset-2"
-                >
-                  schimbă
-                </button>
-              </span>
-            )}
-          </div>
+function FormaDimensiune({
+  modelId,
+  dimensiune,
+  onGata,
+  onSalvat,
+}: {
+  modelId: string
+  /** absent when adding */
+  dimensiune?: Dimensiune
+  onGata: () => void
+  onSalvat: () => Promise<void>
+}) {
+  const notificari = useNotificari()
+  const [cod, setCod] = useState(dimensiune?.cod ?? '')
+  const [lungime, setLungime] = useState(dimensiune === undefined ? '' : mm(dimensiune.lungime))
+  const [latime, setLatime] = useState(dimensiune === undefined ? '' : mm(dimensiune.latime))
+  const [inaltime, setInaltime] = useState(
+    dimensiune?.inaltime == null ? '' : mm(dimensiune.inaltime),
+  )
+  const [produs, setProdus] = useState<{ codSaga: string; denumire: string } | null>(
+    dimensiune?.codSagaProdus == null
+      ? null
+      : { codSaga: dimensiune.codSagaProdus, denumire: dimensiune.denumireProdus ?? '' },
+  )
 
-          <button type="submit" disabled={creeaza.isPending} className="buton buton-primar">
-            Adaugă
-          </button>
-        </form>
+  const esteNoua = dimensiune === undefined
+
+  const salveaza = useMutation({
+    mutationFn: () =>
+      apel(
+        esteNoua
+          ? `/modele/${modelId}/dimensiuni`
+          : `/modele/${modelId}/dimensiuni/${dimensiune.id}`,
+        {
+          metoda: esteNoua ? 'POST' : 'PATCH',
+          corp: {
+            cod,
+            lungime,
+            latime,
+            inaltime: inaltime === '' ? null : inaltime,
+            // '' clears it server-side; null would mean „nu schimba" on a PATCH.
+            codSagaProdus: produs?.codSaga ?? (esteNoua ? null : ''),
+          },
+        },
+      ),
+    onSuccess: async () => {
+      notificari.succes(
+        esteNoua ? `Dimensiunea ${cod} a fost adăugată.` : `Dimensiunea ${cod} a fost salvată.`,
+      )
+      onGata()
+      await onSalvat()
+    },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
+  })
+
+  const dezactiveaza = useMutation({
+    mutationFn: () =>
+      apel(`/modele/${modelId}/dimensiuni/${dimensiune?.id ?? ''}`, {
+        metoda: 'PATCH',
+        corp: { activ: false },
+      }),
+    onSuccess: async () => {
+      notificari.succes(`Dimensiunea ${cod} a fost dezactivată.`)
+      onGata()
+      await onSalvat()
+    },
+    onError: (e) => notificari.eroare(mesajEroare(e)),
+  })
+
+  return (
+    <form
+      onSubmit={(eveniment) => {
+        eveniment.preventDefault()
+        salveaza.mutate()
+      }}
+      className="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3"
+    >
+      <Camp eticheta="Cod" valoare={cod} set={setCod} latime="w-32" placeholder="2000x1600" />
+      <Camp
+        eticheta="Lungime (mm)"
+        valoare={lungime}
+        set={setLungime}
+        latime="w-28"
+        placeholder="2000"
+      />
+      <Camp
+        eticheta="Lățime (mm)"
+        valoare={latime}
+        set={setLatime}
+        latime="w-28"
+        placeholder="1600"
+      />
+      <Camp
+        eticheta="Înălțime (mm)"
+        valoare={inaltime}
+        set={setInaltime}
+        latime="w-28"
+        placeholder="350"
+        optional
+      />
+
+      <div>
+        <span className="eticheta">Produs finit în SAGA</span>
+        {produs === null ? (
+          <CautaArticol
+            clasa="camp w-72"
+            placeholder="caută produsul finit…"
+            onAlege={(a) => setProdus({ codSaga: a.codSaga, denumire: a.denumire })}
+          />
+        ) : (
+          <span className="flex h-10 items-center gap-2 text-sm">
+            <span className="font-mono text-xs">{produs.codSaga}</span>
+            <span className="text-ink">{produs.denumire}</span>
+            <button
+              type="button"
+              onClick={() => setProdus(null)}
+              className="text-xs text-brand underline underline-offset-2"
+            >
+              schimbă
+            </button>
+          </span>
+        )}
+      </div>
+
+      <button type="submit" disabled={salveaza.isPending} className="buton buton-primar">
+        {salveaza.isPending ? 'Se salvează…' : esteNoua ? 'Adaugă' : 'Salvează'}
+      </button>
+
+      {!esteNoua && (
+        <button
+          type="button"
+          disabled={dezactiveaza.isPending}
+          onClick={() => dezactiveaza.mutate()}
+          className="buton buton-pericol buton-mic"
+        >
+          Dezactivează
+        </button>
       )}
 
-    </div>
+      {!esteNoua && (
+        <p className="w-full text-xs text-ink-muted">
+          Măsurile se pot schimba cât timp nu s-a emis niciun bon pe dimensiunea asta. După primul
+          bon rămân doar codul și produsul finit — consumurile de pe bon s-au calculat din ele.
+        </p>
+      )}
+    </form>
   )
 }
 

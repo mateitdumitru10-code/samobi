@@ -24,6 +24,30 @@ import { citesteXlsx } from '../src/nomenclator/xlsx.js'
 const scrie = process.argv.includes('--scrie')
 const DOSAR = resolve(import.meta.dirname, '..', '..', '..', 'docs')
 
+/**
+ * Decisions a person made, model code → SAGA article.
+ *
+ * The heuristic below deliberately refuses anything it is not sure of, and it
+ * is right to: CANAPEA CORINA and CANAPEA CORINA 1200 score alike and only
+ * someone who knows the product can separate them. What that leaves is a short
+ * list of questions, and these are the answers — kept here rather than applied
+ * once by hand, so a rebuilt database ends up in the same place.
+ *
+ * `PAT DAVID 1400/2000` for a model called 2000X1400 is deliberate: the same
+ * bed, written the other way round.
+ */
+const DECIZII: Readonly<Record<string, string>> = {
+  'FOTOLIU-CORINA': '00000202',
+  'HOL-CORINA-311': '00005835',
+  'HOL-VISION-311': '00006940',
+  'PAT-DAVID-2000X1400': '00001654',
+  'PAT-PAUL-2000X1600-CU-SOMIERA': '00025134',
+  // Three recipes, one finished product: the kit and the prototype differ in
+  // what they consume, not in what leaves the factory.
+  'COLTAR-TORRO-CU-KIT-POLIURETAN': '00017073',
+  'COLTAR-TORRO-PROTOTIP': '00017073',
+}
+
 /** How many bons each finished-product code carries, from the production export. */
 function bonuriPerProdus(): Map<string, number> {
   const numar = new Map<string, number>()
@@ -82,6 +106,24 @@ console.log(`${deLegat.length} dimensiuni fără produs finit.\n`)
 let legate = 0
 
 for (const rand of deLegat) {
+  const decis = DECIZII[rand.modelCod]
+  if (decis !== undefined) {
+    const articol = produse.find((p) => p.codSaga === decis)
+    if (articol === undefined) {
+      console.log(`! ${rand.modelCod.padEnd(30)} → ${decis} nu e un produs activ în nomenclator`)
+      continue
+    }
+    console.log(`✓ ${rand.modelCod.padEnd(30)} → ${decis} ${articol.denumire}  (decis)`)
+    if (scrie) {
+      await db
+        .update(dimension)
+        .set({ codSagaProdus: decis })
+        .where(eq(dimension.id, rand.dimensiuneId))
+      legate += 1
+    }
+    continue
+  }
+
   const candidati = produse
     .map((p) => ({
       ...p,
