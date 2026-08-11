@@ -27,7 +27,8 @@
     "raport-dimensiuni": "tsx --env-file=.env scripts/raport-dimensiuni.ts",
     "aplica-dimensiuni": "tsx --env-file=.env scripts/aplica-dimensiuni.ts",
     "curata-test": "tsx --env-file=.env scripts/curata-test.ts",
-    "sterge-bonuri": "tsx --env-file=.env scripts/sterge-bonuri.ts"
+    "sterge-bonuri": "tsx --env-file=.env scripts/sterge-bonuri.ts",
+    "importa-retete-pdf": "tsx --env-file=.env scripts/importa-retete-pdf.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

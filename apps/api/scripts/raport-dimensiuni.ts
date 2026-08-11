@@ -27,7 +27,15 @@ import { clientSql } from '../src/db.js'
 const DOSAR = resolve(import.meta.dirname, '..', '..', '..', 'docs')
 
 /** All the placeholder triples the import scripts stamped, by family. */
-const SABLON_IMPORT = new Set(['2000/900/850', '2600/1800/850', '2000/1600/350', '600/600/450'])
+const SABLON_IMPORT = new Set([
+  '2000/900/850',
+  '2600/1800/850',
+  '2000/1600/350',
+  '600/600/450',
+  // What the SAGA import writes when the report does not say: absurd on
+  // purpose, so it cannot pass for a measurement.
+  '1/1/',
+])
 
 interface Rand {
   model_cod: string

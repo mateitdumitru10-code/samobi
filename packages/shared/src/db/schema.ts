@@ -321,7 +321,20 @@ export const recipe = pgTable(
 export const MODURI_CALCUL = ['fixa', 'formula', 'tabel'] as const
 export type ModCalculDb = (typeof MODURI_CALCUL)[number]
 
-export const GRUPURI = ['STRUCTURA', 'TAPITERIE', 'SPUMA', 'ACCESORII', 'AMBALAJ'] as const
+/**
+ * `NECLASIFICAT` is for lines that came from a SAGA production report, which
+ * says what was consumed but not what part of the product it is. Guessing the
+ * group from a material's name would put upholstery fabric in the frame and
+ * nobody would ever check.
+ */
+export const GRUPURI = [
+  'STRUCTURA',
+  'TAPITERIE',
+  'SPUMA',
+  'ACCESORII',
+  'AMBALAJ',
+  'NECLASIFICAT',
+] as const
 
 export const recipeLine = pgTable(
   'recipe_line',
