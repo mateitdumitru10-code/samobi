@@ -334,6 +334,182 @@ describe.skipIf(!areBazaDeDate)('modele, dimensiuni și rețetar', () => {
     await app.close()
   })
 
+  it('refuză salvarea unei formule negative sau zero pe una dintre dimensiuni', async () => {
+    const app = await buildApp()
+    const modelId = await creeazaModel(app, 'fneg')
+
+    // Two sizes: the formula behaves at the big one and breaks at the small
+    // one, which is exactly the case the fixed test scope could never catch.
+    for (const dim of [
+      { cod: '2000x1600', lungime: '2000', latime: '1600' },
+      { cod: '1000x800', lungime: '1000', latime: '800' },
+    ]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/modele/${modelId}/dimensiuni`,
+        headers: antet('tehnolog'),
+        payload: dim,
+      })
+      expect(res.statusCode).toBe(201)
+    }
+
+    const reteta = (
+      await app.inject({
+        method: 'GET',
+        url: `/modele/${modelId}/reteta`,
+        headers: antet('tehnolog'),
+      })
+    ).json() as { id: string; lockVersion: number }
+
+    const linie = (formula: string) => ({
+      nrLinie: 1,
+      grup: 'STRUCTURA',
+      codSaga: ARTICOL_MATERIAL,
+      esteVariabil: false,
+      um: 'MC',
+      modCalcul: 'formula',
+      formula,
+      procentPierderi: '0',
+      valoriPeDimensiuni: [],
+    })
+
+    // Pozitivă pe 2000x1600 (0.5), negativă pe 1000x800 (-0.5).
+    const negativa = await app.inject({
+      method: 'PUT',
+      url: `/retete/${reteta.id}`,
+      headers: antet('tehnolog'),
+      payload: { lockVersion: reteta.lockVersion, linii: [linie('(L - 1500)/1000')] },
+    })
+    expect(negativa.statusCode).toBe(400)
+    const mesajNegativa = (negativa.json() as { mesaj: string }).mesaj
+    expect(mesajNegativa).toMatch(/Linia 1/)
+    expect(mesajNegativa).toMatch(/1000x800/)
+    expect(mesajNegativa).toMatch(/negativ/)
+    expect(mesajNegativa).toMatch(/-0\.5/)
+
+    // Pozitivă pe 2000x1600 (1), exact zero pe 1000x800.
+    const zero = await app.inject({
+      method: 'PUT',
+      url: `/retete/${reteta.id}`,
+      headers: antet('tehnolog'),
+      payload: { lockVersion: reteta.lockVersion, linii: [linie('(L - 1000)/1000')] },
+    })
+    expect(zero.statusCode).toBe(400)
+    const mesajZero = (zero.json() as { mesaj: string }).mesaj
+    expect(mesajZero).toMatch(/Linia 1/)
+    expect(mesajZero).toMatch(/1000x800/)
+    expect(mesajZero).toMatch(/cantitatea 0/)
+
+    // Validation happened before the write: nothing was deleted, nothing was
+    // inserted, and the lock version did not move.
+    const dupa = (
+      await app.inject({
+        method: 'GET',
+        url: `/modele/${modelId}/reteta`,
+        headers: antet('tehnolog'),
+      })
+    ).json() as { lockVersion: number; linii: unknown[] }
+    expect(dupa.lockVersion).toBe(reteta.lockVersion)
+    expect(dupa.linii).toHaveLength(0)
+    await app.close()
+  })
+
+  it('refuză o formulă cu H când dimensiunea nu are înălțime', async () => {
+    const app = await buildApp()
+    const modelId = await creeazaModel(app, 'finalt')
+
+    const creata = await app.inject({
+      method: 'POST',
+      url: `/modele/${modelId}/dimensiuni`,
+      headers: antet('tehnolog'),
+      // Fără înălțime — un pat nu are H, dar formula de mai jos cere unul.
+      payload: { cod: '1200x900', lungime: '1200', latime: '900' },
+    })
+    expect(creata.statusCode).toBe(201)
+
+    const reteta = (
+      await app.inject({
+        method: 'GET',
+        url: `/modele/${modelId}/reteta`,
+        headers: antet('tehnolog'),
+      })
+    ).json() as { id: string; lockVersion: number }
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/retete/${reteta.id}`,
+      headers: antet('tehnolog'),
+      payload: {
+        lockVersion: reteta.lockVersion,
+        linii: [
+          {
+            nrLinie: 1,
+            grup: 'STRUCTURA',
+            codSaga: ARTICOL_MATERIAL,
+            esteVariabil: false,
+            um: 'MC',
+            modCalcul: 'formula',
+            formula: 'L * l * H / 1000000000',
+            procentPierderi: '0',
+            valoriPeDimensiuni: [],
+          },
+        ],
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    const mesaj = (res.json() as { mesaj: string }).mesaj
+    expect(mesaj).toMatch(/Linia 1/)
+    expect(mesaj).toMatch(/1200x900/)
+    expect(mesaj).toMatch(/înălțime/)
+    await app.close()
+  })
+
+  it('salvează o formulă validă pe toate dimensiunile modelului', async () => {
+    const app = await buildApp()
+    const modelId = await creeazaModel(app, 'fbuna')
+
+    const creata = await app.inject({
+      method: 'POST',
+      url: `/modele/${modelId}/dimensiuni`,
+      headers: antet('tehnolog'),
+      payload: { cod: '2000x1600', lungime: '2000', latime: '1600', inaltime: '350' },
+    })
+    expect(creata.statusCode).toBe(201)
+
+    const reteta = (
+      await app.inject({
+        method: 'GET',
+        url: `/modele/${modelId}/reteta`,
+        headers: antet('tehnolog'),
+      })
+    ).json() as { id: string; lockVersion: number }
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/retete/${reteta.id}`,
+      headers: antet('tehnolog'),
+      payload: {
+        lockVersion: reteta.lockVersion,
+        linii: [
+          {
+            nrLinie: 1,
+            grup: 'STRUCTURA',
+            codSaga: ARTICOL_MATERIAL,
+            esteVariabil: false,
+            um: 'MC',
+            modCalcul: 'formula',
+            formula: '2*(L+l)/1000 * 0.10 * 0.025',
+            procentPierderi: '8',
+            valoriPeDimensiuni: [],
+          },
+        ],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect((res.json() as { lockVersion: number }).lockVersion).toBe(reteta.lockVersion + 1)
+    await app.close()
+  })
+
   it('validează formula și arată rezultatul pe o dimensiune', async () => {
     const app = await buildApp()
     const modelId = await creeazaModel(app, 'formula')

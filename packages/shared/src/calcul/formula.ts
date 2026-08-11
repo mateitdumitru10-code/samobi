@@ -119,6 +119,23 @@ const parser = creeazaParser()
 /** Matches a bare L, l or H. The `l` inside `floor` is not a match. */
 const REGEX_VARIABILA = /\b[LlH]\b/g
 
+/**
+ * A decimal written the workshop way: digit, comma, digit — `0,5`.
+ *
+ * The app normalises comma to dot in quantity fields, but the formula string
+ * reaches the parser raw, and expr-eval gives the comma a meaning of its own:
+ * argument separator. At the top level that is a parse error, which is safe.
+ * Inside a function call it parses cleanly as an extra argument and the formula
+ * silently becomes a different formula: `min(l*0,05)` parses as `min(l*0, 5)`,
+ * which is `min(0, 5)` = 0; `max(L/1000, l/1000*0,5)` parses as
+ * `max(2, l/1000*0, 5)` = `max(2, 0, 5)` = 5, where 2 was intended. A wrong
+ * quantity that validates is worse than one that fails, so the shape itself is
+ * refused before parsing. The match is strict — no whitespace between the three
+ * characters — so `min(L, l)` and even `min(L*2, 3*l)` stay legal: a spaced
+ * comma reads as a separator, only the glued `0,5` reads as a decimal.
+ */
+const REGEX_VIRGULA_ZECIMALA = /\d,\d/
+
 /** A dimension without H simply does not define it — referencing it then fails. */
 function valoriDinScop(scop: ScopFormula): Record<string, number> {
   const valori: Record<string, number> = { L: scop.L, l: scop.l }
@@ -141,6 +158,17 @@ export function valideazaFormula(formula: string, nrLinie?: number): FormulaVali
   const text = formula.trim()
   if (text === '') {
     throw new EroareFormulaInvalida(formula, 'formula este goală', nrLinie)
+  }
+
+  // Refused before parsing, because the parser would not refuse it — see
+  // REGEX_VIRGULA_ZECIMALA for what it silently turns into.
+  if (REGEX_VIRGULA_ZECIMALA.test(text)) {
+    throw new EroareFormulaInvalida(
+      formula,
+      'zecimalele se scriu cu punct, nu cu virgulă (scrie 0.5, nu 0,5) — ' +
+        'virgula desparte argumentele funcțiilor și ar schimba sensul formulei',
+      nrLinie,
+    )
   }
 
   let expresie

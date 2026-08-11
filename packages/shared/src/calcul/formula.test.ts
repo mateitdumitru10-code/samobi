@@ -57,6 +57,31 @@ describe('valideazaFormula', () => {
   it('permite minus unar', () => {
     expect(evalueazaFormula('-L/1000', SCOP).valoare.toString()).toBe('-2')
   })
+
+  describe('virgula zecimală', () => {
+    it('respinge zecimalele cu virgulă dintr-un apel de funcție', () => {
+      // Fără gardă, parserul citea virgula ca separator de argumente:
+      // min(l*0,05) devenea min(l*0, 5) = 0, iar max(L/1000, l/1000*0,5)
+      // devenea max(2, 0, 5) = 5 — ambele validau și dădeau cantități greșite.
+      expect(() => valideazaFormula('min(l*0,05)')).toThrow(EroareFormulaInvalida)
+      expect(() => valideazaFormula('max(L/1000, l/1000*0,5)')).toThrow(EroareFormulaInvalida)
+    })
+
+    it('explică în mesaj că zecimalele se scriu cu punct', () => {
+      expect(() => valideazaFormula('min(l*0,05)')).toThrow(/punct/)
+    })
+
+    it('păstrează virgula ca separator legitim de argumente', () => {
+      expect(() => valideazaFormula('min(L, l)')).not.toThrow()
+      expect(() => valideazaFormula('max(L, l, H)')).not.toThrow()
+    })
+
+    it('acceptă în continuare zecimalele cu punct', () => {
+      const r = evalueazaFormula('min(l*0.05, L)', SCOP)
+      expect(r.valoare.toString()).toBe('80')
+      expect(() => valideazaFormula('L/1000*0.5')).not.toThrow()
+    })
+  })
 })
 
 describe('evalueazaFormula', () => {

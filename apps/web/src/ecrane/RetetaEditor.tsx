@@ -1,6 +1,6 @@
 import { GRUPURI, MODURI_CALCUL } from '@samobi/shared/db'
 import type { RezultatValidareFormula } from '@samobi/shared/scheme'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { apel, EroareApi } from '../lib/api.js'
@@ -318,8 +318,14 @@ export function RetetaEditor({
             categorieVariabila: linie.esteVariabil ? linie.categorieVariabila : null,
             um: linie.um,
             modCalcul: linie.modCalcul,
+            // A formula line keeps the fixed quantity it replaced. Some 3900
+            // correct numbers are being converted to formulas by hand, and the
+            // old number is the only reference a typo can be caught against —
+            // there is no recipe versioning to dig it out of later.
             cantitateFixa:
-              linie.modCalcul === 'fixa' ? (linie.cantitateFixa.replace(',', '.') || null) : null,
+              linie.modCalcul === 'fixa' || linie.modCalcul === 'formula'
+                ? linie.cantitateFixa.replace(',', '.') || null
+                : null,
             formula: linie.modCalcul === 'formula' ? linie.formula : null,
             procentPierderi:
               linie.procentPierderi === '' ? '0' : linie.procentPierderi.replace(',', '.'),
@@ -757,6 +763,10 @@ export function RetetaEditor({
                 linie.um.trim() !== '' &&
                 linie.umSaga.trim().toUpperCase() !== linie.um.trim().toUpperCase()
               const codInexistent = codRau.has(linie.codSaga)
+              // A formula line still shows the fixed quantity it replaced —
+              // struck through, so it reads as the old number being reproduced,
+              // not as a live input. The check panel below compares against it.
+              const cantitateVeche = linie.modCalcul === 'formula' && linie.cantitateFixa !== ''
               const ancora = { 'data-cheie': linie.cheie }
 
               return (
@@ -894,16 +904,26 @@ export function RetetaEditor({
 
                   <td className="px-1 py-1">
                     <input
-                      value={campActiv(linie.modCalcul, 'cantitateFixa') ? linie.cantitateFixa : ''}
+                      value={
+                        campActiv(linie.modCalcul, 'cantitateFixa') || cantitateVeche
+                          ? linie.cantitateFixa
+                          : ''
+                      }
                       disabled={blocat || !campActiv(linie.modCalcul, 'cantitateFixa')}
                       onChange={(e) => schimba(linie.cheie, 'cantitateFixa', e.target.value)}
                       onKeyDown={navigheaza}
                       {...coordonate(rand, idx('cantitate'))}
                       {...ancora}
                       title={
-                        esteNumarInvalid(linie.cantitateFixa) ? 'Un număr, ex. 0,5' : undefined
+                        cantitateVeche
+                          ? 'Cantitatea fixă dinainte de formulă — rămâne salvată, ca reper de verificare'
+                          : esteNumarInvalid(linie.cantitateFixa)
+                            ? 'Un număr, ex. 0,5'
+                            : undefined
                       }
                       className={`w-24 rounded border px-1 py-1 text-right tabular-nums disabled:bg-surface-sunken disabled:text-ink-disabled ${
+                        cantitateVeche ? 'line-through ' : ''
+                      }${
                         esteNumarInvalid(linie.cantitateFixa)
                           ? 'border-danger'
                           : 'border-transparent hover:border-line-strong'
@@ -1155,20 +1175,22 @@ export function RetetaEditor({
         </div>
       )}
 
-      <VerificareFormula linii={linii} dimensiuneId={dimensiunePreview} />
+      <VerificareFormula linii={linii} dimensiuni={dimensiuni} />
 
     </div>
   )
 }
 
 /**
- * Live check of the formulas, evaluated on the chosen dimension. The number
- * belongs on screen before the recipe is saved, not on a bon three weeks later.
+ * Live check of the formulas: one result per registered dimension, next to the
+ * fixed quantity the formula replaces. Every line being converted holds a
+ * correct number today, so the conversion is right when it reproduces it — and
+ * a result that lands far away is a typo about to become a wrong stock
+ * movement. The number belongs on screen before the recipe is saved, not on a
+ * bon three weeks later.
  */
-function VerificareFormula({ linii, dimensiuneId }: { linii: Linie[]; dimensiuneId: string }) {
-  const formule = linii
-    .filter((l) => l.modCalcul === 'formula' && l.formula.trim() !== '')
-    .map((l) => ({ nrLinie: l.nrLinie, formula: l.formula, um: l.um }))
+function VerificareFormula({ linii, dimensiuni }: { linii: Linie[]; dimensiuni: Dimensiune[] }) {
+  const formule = linii.filter((l) => l.modCalcul === 'formula' && l.formula.trim() !== '')
 
   if (formule.length === 0) return null
 
@@ -1180,67 +1202,103 @@ function VerificareFormula({ linii, dimensiuneId }: { linii: Linie[]; dimensiune
       <p className="mt-1 text-xs text-ink-muted">
         Variabile: <code className="font-mono">L</code> lungime,{' '}
         <code className="font-mono">l</code> lățime, <code className="font-mono">H</code> înălțime,
-        în milimetri. Operatori: <code className="font-mono">+ − * / ( )</code>.
+        în milimetri. Operatori: <code className="font-mono">+ − * / ( )</code>. Rezultatul apare
+        pentru fiecare dimensiune, cu abaterea față de cantitatea fixă veche.
       </p>
 
       <ul className="mt-3 space-y-1.5">
-        {formule.map((f) => (
-          <RandFormula key={f.nrLinie} {...f} dimensiuneId={dimensiuneId} />
+        {formule.map((l) => (
+          <RandFormula key={l.cheie} linie={l} dimensiuni={dimensiuni} />
         ))}
       </ul>
     </details>
   )
 }
 
-function RandFormula({
-  nrLinie,
-  formula,
-  um,
-  dimensiuneId,
-}: {
-  nrLinie: number
-  formula: string
-  um: string
-  dimensiuneId: string
-}) {
-  const [amanata, setAmanata] = useState(formula)
+function RandFormula({ linie, dimensiuni }: { linie: Linie; dimensiuni: Dimensiune[] }) {
+  const [amanata, setAmanata] = useState(linie.formula)
 
   useEffect(() => {
-    const cronometru = setTimeout(() => setAmanata(formula), 400)
+    const cronometru = setTimeout(() => setAmanata(linie.formula), 400)
     return () => clearTimeout(cronometru)
-  }, [formula])
+  }, [linie.formula])
 
-  const verificare = useQuery({
-    queryKey: ['formula', amanata, dimensiuneId],
-    queryFn: () =>
-      apel<RezultatValidareFormula>('/retete/valideaza-formula', {
-        metoda: 'POST',
-        corp: { formula: amanata, ...(dimensiuneId === '' ? {} : { dimensiuneId }) },
-      }),
-    enabled: amanata.trim() !== '',
-    retry: false,
+  // One evaluation per registered dimension. On a model with none, the call
+  // still runs once without a dimension, so the syntax check is not lost.
+  const tinte: (Dimensiune | undefined)[] = dimensiuni.length === 0 ? [undefined] : dimensiuni
+  const verificari = useQueries({
+    queries: tinte.map((d) => ({
+      queryKey: ['formula', amanata, d?.id ?? ''],
+      queryFn: () =>
+        apel<RezultatValidareFormula>('/retete/valideaza-formula', {
+          metoda: 'POST',
+          corp: { formula: amanata, ...(d === undefined ? {} : { dimensiuneId: d.id }) },
+        }),
+      enabled: amanata.trim() !== '',
+      retry: false,
+    })),
   })
 
-  const rezultat = verificare.data
+  // The formula itself is valid or not regardless of dimension, so the verdict
+  // and its message are read once, from the first evaluation.
+  const prima = verificari[0]?.data
 
   return (
-    <li className="flex flex-wrap items-baseline gap-2 text-sm">
-      <span className="text-ink-muted">linia {nrLinie}</span>
-      <code className="rounded bg-surface-sunken px-1.5 py-0.5 text-xs">{formula}</code>
-      {verificare.isFetching && <span className="text-xs text-ink-muted">se verifică…</span>}
-      {rezultat?.valida === false && <span className="text-xs text-danger">{rezultat.mesaj}</span>}
-      {rezultat?.previzualizare != null && (
-        <span className="text-ink-secondary">
-          = <span className="font-medium tabular-nums">{rezultat.previzualizare.valoare}</span> {um}
-          <span className="ml-2 text-xs text-ink-muted">
-            {rezultat.previzualizare.expresieEvaluata}
-          </span>
-        </span>
+    <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+      <span className="text-ink-muted">linia {linie.nrLinie}</span>
+      <code className="rounded bg-surface-sunken px-1.5 py-0.5 text-xs">{linie.formula}</code>
+      {verificari.some((v) => v.isFetching) && (
+        <span className="text-xs text-ink-muted">se verifică…</span>
       )}
-      {rezultat?.valida === true && rezultat.previzualizare === null && rezultat.mesaj !== null && (
-        <span className="text-xs text-atentie">{rezultat.mesaj}</span>
+      {prima?.valida === false && <span className="text-xs text-danger">{prima.mesaj}</span>}
+      {tinte.map((d, i) => {
+        const previzualizare = verificari[i]?.data?.previzualizare
+        if (previzualizare == null) return null
+        return (
+          <span key={d?.id ?? ''} className="text-ink-secondary">
+            {dimensiuni.length > 1 && <span className="text-xs text-ink-muted">{d?.cod} </span>}={' '}
+            <span
+              title={previzualizare.expresieEvaluata}
+              className="font-medium tabular-nums text-ink"
+            >
+              {cant(previzualizare.valoare)}
+            </span>{' '}
+            {linie.um}
+            <Abatere noua={previzualizare.valoare} veche={linie.cantitateFixa} />
+          </span>
+        )
+      })}
+      {prima?.valida === true && prima.previzualizare === null && prima.mesaj !== null && (
+        <span className="text-xs text-atentie">{prima.mesaj}</span>
       )}
     </li>
+  )
+}
+
+/**
+ * How far the formula's result lands from the fixed quantity it replaces.
+ *
+ * Under half a percent is rounding noise. Past twenty it is almost certainly a
+ * unit mistake — mm² read as m², a lost /1000, a comma become a digit — and
+ * those are exactly the errors this panel exists to catch, so they get the
+ * loudest colour on the page.
+ */
+function Abatere({ noua, veche }: { noua: string; veche: string }) {
+  const vechiNr = numar(veche)
+  const nouNr = Number(noua)
+  if (vechiNr === null || vechiNr === 0 || !Number.isFinite(nouNr)) return null
+  const procent = ((nouNr - vechiNr) / vechiNr) * 100
+  const abs = Math.abs(procent)
+  const clasa =
+    abs < 0.5 ? 'text-ink-muted' : abs < 20 ? 'font-medium text-atentie' : 'font-semibold text-danger'
+  return (
+    <span className={`ml-2 text-xs ${clasa}`}>
+      era {cant(veche)} ·{' '}
+      <span className="tabular-nums">
+        {procent > 0 ? '+' : ''}
+        {procent.toLocaleString('ro-RO', { maximumFractionDigits: 1 })}%
+      </span>
+    </span>
   )
 }
 

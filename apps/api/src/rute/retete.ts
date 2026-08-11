@@ -6,7 +6,14 @@ import {
   recipeLineDimension,
   sagaArticle,
 } from '@samobi/shared/db'
-import { EroareCalcul, evalueazaFormula, valideazaFormula } from '@samobi/shared/calcul'
+import {
+  catreString,
+  EroareCalcul,
+  EroareInaltimeLipsa,
+  evalueazaFormula,
+  valideazaFormula,
+  type FormulaValidata,
+} from '@samobi/shared/calcul'
 import {
   schemaSalvareReteta,
   schemaValidareFormula,
@@ -171,13 +178,97 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
       throw new CerereInvalida('Există două linii cu același număr.')
     }
 
+    // Syntax and variables first: a formula that does not even parse should be
+    // reported on its own terms, without dragging a dimension into the message.
+    const formuleValidate = new Map<number, FormulaValidata>()
     for (const linie of linii) {
       if (linie.modCalcul === 'formula' && linie.formula !== null) {
         try {
-          valideazaFormula(linie.formula, linie.nrLinie)
+          formuleValidate.set(linie.nrLinie, valideazaFormula(linie.formula, linie.nrLinie))
         } catch (err) {
           if (err instanceof EroareCalcul) throw new CerereInvalida(err.message)
           throw err
+        }
+      }
+    }
+
+    /**
+     * Waste on top of a step function books a fraction of a whole thing.
+     *
+     * `ceil(l/1400)` is two sheets; two sheets plus 8% is 2,16 sheets, which
+     * SAGA receives as 2,160 and nobody can cut. The step exists precisely to
+     * land on a whole number, so the allowance belongs inside the formula —
+     * `ceil(l/1400*1.08)` — and the percentage stays at zero.
+     */
+    for (const linie of linii) {
+      const trepte = /\b(ceil|floor|round)\s*\(/.test(linie.formula ?? '')
+      if (linie.modCalcul === 'formula' && trepte && Number(linie.procentPierderi) > 0) {
+        throw new CerereInvalida(
+          `Linia ${linie.nrLinie} rotunjește la întreg (${
+            /\b(ceil|floor|round)\b/.exec(linie.formula ?? '')?.[1] ?? 'ceil'
+          }) și are și ${linie.procentPierderi}% pierderi. ` +
+            'Ar ieși o fracțiune dintr-o bucată întreagă. Pune adaosul în formulă ' +
+            'și lasă pierderile pe 0.',
+        )
+      }
+    }
+
+    // Then every formula is evaluated against every active dimension of the
+    // model, before anything is written. A result the bon would refuse —
+    // non-finite, zero or negative (`EroareCantitateZero`,
+    // `EroareCantitateNegativa` at bon time) — must refuse the save too:
+    // letting it through means the recipe looks fine and then no bon can ever
+    // be issued on that size. A model with no active dimensions still saves:
+    // the syntax was proven above and there is nothing real to evaluate
+    // against yet; the first save after a dimension is registered re-runs this
+    // check over every line, because a save always sends the whole grid.
+    if (formuleValidate.size > 0) {
+      const [existenta] = await db.select().from(recipe).where(eq(recipe.id, id)).limit(1)
+      if (existenta === undefined) throw new NuExista('Rețeta nu există.')
+
+      const dimensiuniActive = await db
+        .select()
+        .from(dimension)
+        .where(and(eq(dimension.modelId, existenta.modelId), eq(dimension.activ, true)))
+        .orderBy(asc(dimension.cod))
+
+      for (const linie of linii) {
+        const validata = formuleValidate.get(linie.nrLinie)
+        if (validata === undefined || linie.formula === null) continue
+
+        for (const dim of dimensiuniActive) {
+          // Same wording the bon-time calculation uses — the shared class owns
+          // the message, this route only decides when to say it.
+          if (validata.foloseteInaltime && dim.inaltime === null) {
+            throw new CerereInvalida(new EroareInaltimeLipsa(dim.cod, linie.nrLinie).message)
+          }
+
+          const rezultat = evalueazaFormula(linie.formula, {
+            L: Number(dim.lungime),
+            l: Number(dim.latime),
+            H: dim.inaltime === null ? null : Number(dim.inaltime),
+          })
+
+          if (!rezultat.esteNumar) {
+            throw new CerereInvalida(
+              `Linia ${linie.nrLinie}: formula nu produce un număr finit pe dimensiunea ` +
+                `„${dim.cod}" (${rezultat.expresieEvaluata}). Verifică împărțirile la zero.`,
+            )
+          }
+          if (rezultat.valoare.isZero()) {
+            throw new CerereInvalida(
+              `Linia ${linie.nrLinie}: formula produce cantitatea 0 pe dimensiunea ` +
+                `„${dim.cod}" (${rezultat.expresieEvaluata} = 0). Niciun bon nu s-ar putea ` +
+                `emite pe această dimensiune — corectează formula sau scoate linia.`,
+            )
+          }
+          if (rezultat.valoare.isNegative()) {
+            throw new CerereInvalida(
+              `Linia ${linie.nrLinie}: formula produce o cantitate negativă pe dimensiunea ` +
+                `„${dim.cod}": ${catreString(rezultat.valoare)} (${rezultat.expresieEvaluata}). ` +
+                `Niciun bon nu s-ar putea emite pe această dimensiune — corectează formula.`,
+            )
+          }
         }
       }
     }
@@ -271,7 +362,11 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
       entitate: 'recipe',
       entitateId: id,
       actiune: 'modificare',
-      diff: { nrLinii: linii.length, lockVersion: rezultat.lockVersion },
+      // The full line contents, not just a count: a save replaces every line
+      // and there is no recipe versioning, so this audit entry is the only
+      // record of what the recipe said at this moment. The previous entry
+      // holds the previous contents — together they are the history.
+      diff: { nrLinii: linii.length, lockVersion: rezultat.lockVersion, linii },
     })
 
     return rezultat
