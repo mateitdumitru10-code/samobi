@@ -31,7 +31,8 @@
     "importa-retete-pdf": "tsx --env-file=.env scripts/importa-retete-pdf.ts",
     "raport-gestiune-gresita": "tsx --env-file=.env scripts/raport-gestiune-gresita.ts",
     "aplica-gestiune-gresita": "tsx --env-file=.env scripts/aplica-gestiune-gresita.ts",
-    "marcheaza-textile": "tsx --env-file=.env scripts/marcheaza-textile.ts"
+    "marcheaza-textile": "tsx --env-file=.env scripts/marcheaza-textile.ts",
+    "dezactiveaza-duplicate": "tsx --env-file=.env scripts/dezactiveaza-duplicate.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
