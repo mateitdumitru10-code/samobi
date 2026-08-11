@@ -25,7 +25,8 @@
     "propune-formule": "tsx --env-file=.env scripts/propune-formule.ts",
     "aplica-formule": "tsx --env-file=.env scripts/aplica-formule.ts",
     "raport-dimensiuni": "tsx --env-file=.env scripts/raport-dimensiuni.ts",
-    "aplica-dimensiuni": "tsx --env-file=.env scripts/aplica-dimensiuni.ts"
+    "aplica-dimensiuni": "tsx --env-file=.env scripts/aplica-dimensiuni.ts",
+    "curata-test": "tsx --env-file=.env scripts/curata-test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

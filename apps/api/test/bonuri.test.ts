@@ -136,10 +136,28 @@ describe.skipIf(!areBazaDeDate)('bonuri și export', () => {
       await clientSql`delete from production_order_line where production_order_id in (
         select id from production_order where ${nostru})`
       await clientSql`delete from production_order where ${nostru}`
-      if (exporturi.length > 0) {
-        await clientSql`delete from export_batch where id = any(${clientSql.array(
-          exporturi.map((e) => e.id),
-        )}::uuid[])`
+      // By owner, not by the ids this run happens to hold: a suite killed
+      // half-way leaves batches behind, and every one of them is a foreign key
+      // that keeps its test account alive forever.
+      const idConturi = Object.values(conturi).map((c) => c.id)
+      if (idConturi.length > 0) {
+        // The tripwire: a batch of this run that still has a bon after the
+        // run's own bons are gone is somebody else's document, and this suite
+        // had no business exporting it. Say so loudly rather than delete it.
+        const straine = await clientSql<{ n: number }[]>`
+          select count(*)::int n from production_order o
+          join export_batch e on e.id = o.export_id
+          where e.generat_de = any(${clientSql.array(idConturi)}::uuid[])`
+        if ((straine[0]?.n ?? 0) > 0) {
+          console.error(
+            `ATENȚIE: ${straine[0]?.n} bonuri din afara testului au ajuns într-un lot ` +
+              'generat de un cont de test. Verifică ce a exportat suita.',
+          )
+        }
+
+        await clientSql`delete from export_batch
+          where generat_de = any(${clientSql.array(idConturi)}::uuid[])
+            and not exists (select 1 from production_order o where o.export_id = export_batch.id)`
       }
       await clientSql`delete from recipe_line where recipe_id in (
         select id from recipe where model_id = ${modelId})`
@@ -148,7 +166,13 @@ describe.skipIf(!areBazaDeDate)('bonuri și export', () => {
       await clientSql`delete from model where id = ${modelId} and cod like 'TEST-%'`
     }
     for (const cont of Object.values(conturi)) {
-      await supabaseAdmin.auth.admin.deleteUser(cont.id)
+      // `deleteUser` reports failure in its result rather than throwing, so a
+      // foreign key still pointing at the account used to leave it behind in
+      // silence — nine of them, before anybody looked.
+      const { error } = await supabaseAdmin.auth.admin.deleteUser(cont.id)
+      if (error !== null) {
+        throw new Error(`Contul de test ${cont.id} nu s-a putut șterge: ${error.message}`)
+      }
     }
     await clientSql.end({ timeout: 5 })
   }, 120_000)
@@ -342,17 +366,25 @@ describe.skipIf(!areBazaDeDate)('bonuri și export', () => {
   })
 
   it('exportă cu unitatea din rețetar, oricare ar fi cea din catalog', async () => {
-    // 00000023 CAPSE 380/14 este în BUC în nomenclator; rețetarul îl dă în MIIB.
-    // Trimis așa, SAGA înregistrează de o mie de ori mai puțin.
+    // Cautarea nepotrivirii se face DOAR printre bonurile acestei rulari.
+    //
+    // Prima versiune cauta in tot `production_order_line`, lua primul bon gasit
+    // si il reexporta cu `confirmaReexport`. Bonul gasit era, previzibil, unul
+    // real: o rulare de teste a mutat un bon de productie din lotul lui in unul
+    // generat de un cont de test. Un test nu are voie sa scrie decat peste ce a
+    // creat el.
     const [linie] = await clientSql`
       select pol.production_order_id, pol.um, a.um as um_saga
       from production_order_line pol
       join saga_article a on a.cod_saga = pol.cod_saga
-      where upper(btrim(pol.um)) <> upper(btrim(a.um)) and btrim(a.um) <> ''
+      where pol.production_order_id = any(${clientSql.array(bonuri)}::uuid[])
+        and upper(btrim(pol.um)) <> upper(btrim(a.um))
+        and btrim(a.um) <> ''
       limit 1`
 
     if (linie === undefined) {
-      // Nimic de verificat pe datele curente; testul nu inventează o nepotrivire.
+      // Nimic de verificat pe datele acestei rulari; testul nu inventeaza o
+      // nepotrivire si nu se atinge de bonurile altcuiva.
       expect(true).toBe(true)
       return
     }
