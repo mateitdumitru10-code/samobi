@@ -32,7 +32,8 @@
     "raport-gestiune-gresita": "tsx --env-file=.env scripts/raport-gestiune-gresita.ts",
     "aplica-gestiune-gresita": "tsx --env-file=.env scripts/aplica-gestiune-gresita.ts",
     "marcheaza-textile": "tsx --env-file=.env scripts/marcheaza-textile.ts",
-    "dezactiveaza-duplicate": "tsx --env-file=.env scripts/dezactiveaza-duplicate.ts"
+    "dezactiveaza-duplicate": "tsx --env-file=.env scripts/dezactiveaza-duplicate.ts",
+    "aplica-formula-articol": "tsx --env-file=.env scripts/aplica-formula-articol.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
