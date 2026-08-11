@@ -489,9 +489,16 @@ export const productionOrder = pgTable(
     recipeId: uuid('recipe_id')
       .notNull()
       .references(() => recipe.id),
-    codSagaProdus: text('cod_saga_produs')
-      .notNull()
-      .references(() => sagaArticle.codSaga),
+    /**
+     * The finished product, when the model has one.
+     *
+     * Nullable, because the export does not carry it: the file SAGA imports is
+     * the consumption — code, name, unit, quantity, one row per material. The
+     * product a bon was issued for is recorded here for reading the bon back,
+     * and a model that has no article yet must not be prevented from booking
+     * what the workshop built today.
+     */
+    codSagaProdus: text('cod_saga_produs').references(() => sagaArticle.codSaga),
     cantitate: cantitate('cantitate').notNull(),
     pretPrestabilit: cantitate('pret_prestabilit'),
     status: text('status').notNull().default('draft'),

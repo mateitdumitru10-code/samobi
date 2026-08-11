@@ -77,7 +77,8 @@ interface RandBon {
   modelCod: string
   modelDenumire: string
   dimensiuneCod: string
-  codSagaProdus: string
+  /** null when the model has no finished product in SAGA; the export never uses it */
+  codSagaProdus: string | null
   denumireProdus: string | null
 }
 
@@ -278,8 +279,7 @@ function BonNou() {
     dimensiuneId !== '' &&
     toateAlese &&
     cantitateCurata !== null &&
-    cantitatiInvalide.length === 0 &&
-    dimensiune?.codSagaProdus != null
+    cantitatiInvalide.length === 0
 
   /**
    * Anything that changes the numbers invalidates the preview.
@@ -452,9 +452,9 @@ function BonNou() {
       )}
 
       {dimensiune !== undefined && dimensiune.codSagaProdus === null && (
-        <p className="rounded-lg border border-atentie-border bg-atentie-bg px-3 py-2 text-sm text-atentie">
-          Dimensiunea {dimensiune.cod} nu are cod de produs finit în SAGA. Leagă-l la „Modele și
-          rețete" înainte de a emite bonul.
+        <p className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary">
+          Dimensiunea {dimensiune.cod} nu are cod de produs finit în SAGA. Bonul se emite oricum —
+          exportul conține doar consumurile. Codul e doar pentru citit bonul mai târziu.
         </p>
       )}
 
@@ -955,7 +955,9 @@ function RandBonuri({
         <td className="px-4 py-2">
           <button type="button" onClick={onDesfasoara} className="text-left hover:underline">
             {bon.modelDenumire}
-            <span className="ml-2 font-mono text-xs text-ink-muted">{bon.codSagaProdus}</span>
+            {bon.codSagaProdus !== null && (
+              <span className="ml-2 font-mono text-xs text-ink-muted">{bon.codSagaProdus}</span>
+            )}
           </button>
         </td>
         <td className="px-4 py-2 text-ink-secondary">{bon.dimensiuneCod}</td>

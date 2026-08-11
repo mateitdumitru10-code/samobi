@@ -114,13 +114,15 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
 
     const dimensiune = calcul.rezultat.dimensiune
 
+    /**
+     * Null is allowed, and deliberately.
+     *
+     * The file SAGA imports is the consumption — code, name, unit, quantity,
+     * one row per material. The finished product never appears in it, so
+     * refusing to issue a bon without one stopped the workshop from booking
+     * what it built, for a field the export does not read.
+     */
     const codSagaProdus = calcul.context.codSagaProdus
-    if (codSagaProdus === null) {
-      throw new CerereInvalida(
-        `Dimensiunea ${dimensiune.cod} nu are cod de produs finit în SAGA. ` +
-          'Leagă-l înainte de a emite bonul.',
-      )
-    }
 
     const bon = await db.transaction(async (tx) => {
       const [creat] = await tx

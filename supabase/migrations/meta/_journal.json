@@ -64,6 +64,13 @@
       "when": 1786437366762,
       "tag": "20260811083606_fara_dimensiuni_la_comanda",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786465538175,
+      "tag": "20260811162538_harsh_synch",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "production_order" ALTER COLUMN "cod_saga_produs" DROP NOT NULL;
