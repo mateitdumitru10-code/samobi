@@ -13,6 +13,9 @@ import { inflateSync } from 'node:zlib'
  * no embedded font mapping, so the bytes are the characters.
  */
 
+/** Half a point: the same printed row can differ in the last digit. */
+const TOLERANTA_RAND = 0.5
+
 export interface Bucata {
   pagina: number
   /** distance down the page; larger is further down after the sign flip */
@@ -90,12 +93,15 @@ function* bucatiDin(flux: Buffer, pagina: number): Generator<Bucata> {
 
 /** The report's lines, in reading order, columns joined by two spaces. */
 export function randuriPdf(date: Buffer): string[] {
-  const peRand = new Map<string, Bucata[]>()
+  const peRand = new Map<number, Bucata[]>()
 
-  continuturi(date).forEach((flux, pagina) => {
-    for (const bucata of bucatiDin(flux, pagina)) {
-      // A tenth of a point: the same printed row can differ in the last digit.
-      const cheie = `${bucata.pagina}|${bucata.y.toFixed(1)}`
+  // Grouped by height alone, across every stream in the file. SAGA writes one
+  // printed row in several streams — the name in one, the figures in another —
+  // so keying rows by stream as well split fifteen percent of every recipe into
+  // fragments that matched nothing and vanished without a trace.
+  continuturi(date).forEach((flux, index) => {
+    for (const bucata of bucatiDin(flux, index)) {
+      const cheie = Math.round(bucata.y / TOLERANTA_RAND)
       const grup = peRand.get(cheie)
       if (grup === undefined) peRand.set(cheie, [bucata])
       else grup.push(bucata)
@@ -103,11 +109,7 @@ export function randuriPdf(date: Buffer): string[] {
   })
 
   return [...peRand.entries()]
-    .sort(([a], [b]) => {
-      const [pa, ya] = a.split('|')
-      const [pb, yb] = b.split('|')
-      return Number(pa) - Number(pb) || Number(ya) - Number(yb)
-    })
+    .sort(([a], [b]) => a - b)
     .map(([, bucati]) =>
       bucati
         .sort((a, b) => a.x - b.x)

@@ -159,6 +159,14 @@ if (!scrie) {
 
 // ---------------------------------------------------------------------------
 
+/** The catalogue's unit, for the lines whose unit cell the print dropped. */
+const umCatalog = new Map(
+  (
+    await clientSql<{ cod_saga: string; um: string }[]>`
+      select cod_saga, um from saga_article`
+  ).map((a) => [a.cod_saga, a.um]),
+)
+
 function liniiPentru(bon: BonPdf) {
   return bon.consumuri.map((c, index) => ({
     nrLinie: index + 1,
@@ -166,7 +174,7 @@ function liniiPentru(bon: BonPdf) {
     codSaga: c.codSaga,
     esteVariabil: false,
     categorieVariabila: null,
-    um: c.um,
+    um: c.um ?? umCatalog.get(c.codSaga) ?? 'BUC',
     modCalcul: 'fixa',
     cantitateFixa: c.cantitate,
     formula: null,
