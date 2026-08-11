@@ -1,11 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-
 import { recipe, recipeLine } from '@samobi/shared/db'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 
 import { clientSql, db } from '../src/db.js'
-import { citesteXlsx } from '../src/nomenclator/xlsx.js'
 
 /**
  * Marks the upholstery fabric on each recipe as chosen-at-bon-time.
@@ -43,20 +39,7 @@ import { citesteXlsx } from '../src/nomenclator/xlsx.js'
 
 const scrie = process.argv.slice(2).includes('--scrie')
 
-/** Up to this many recipes, an article is rare enough to be a choice outright. */
-const REPETARI_MAXIME = 3
 
-/** Share of a family's products that ever went out with a different one of it. */
-const VARIATIE_MINIMA = 0.1
-
-const ISTORIC = resolve(
-  import.meta.dirname,
-  '..',
-  '..',
-  '..',
-  'docs',
-  'XLSX_10-08-2026_14-30-52.xlsx',
-)
 
 /**
  * Names that describe a function rather than a fabric. Everything a customer
@@ -69,7 +52,6 @@ const CUVINTE_FUNCTIONALE = [
   'VATELINA',
   'LEZARDA',
   'CORDELINA',
-  'TESATURA',
   'LONJERON',
   'BANDA',
   'ELASTIC',
@@ -86,66 +68,15 @@ const CUVINTE_FUNCTIONALE = [
   'RIPS',
   'DUBLURA',
   'CANT',
+  'CHEDER',
+  'RELNET',
+  'SFOARA',
 ]
 
 const esteFunctional = (denumire: string): boolean =>
   CUVINTE_FUNCTIONALE.some((cuvant) => denumire.toUpperCase().startsWith(cuvant))
 
-/** The plain fabric that is a cover in some recipes and a lining in others. */
-const TESATURA_SIMPLA = 'TESATURA POLIESTER'
 
-const articole = new Map(
-  (
-    await clientSql<{ cod_saga: string; denumire: string; um: string }[]>`
-      select cod_saga, denumire, um from saga_article`
-  ).map((a) => [a.cod_saga, a]),
-)
-
-/**
- * Reads nineteen months of production bons and returns the fabric families that
- * are actually picked — the ones where the same product went out with different
- * articles of that family on different bons.
- */
-function familiiCareVariaza(): Set<string> {
-  const foaie = citesteXlsx(readFileSync(ISTORIC))
-  const antet = foaie.randuri[0] ?? []
-  const col = (nume: string) => antet.indexOf(nume)
-
-  const produsulBonului = new Map<string, string>()
-  for (const r of foaie.randuri.slice(1)) {
-    const cheie = `${r[col('nr')] ?? ''}#${r[col('id_unic')] ?? ''}`
-    const p = r[col('cod')] ?? ''
-    if (p !== '' && !produsulBonului.has(cheie)) produsulBonului.set(cheie, p)
-  }
-
-  const peFamilie = new Map<string, Map<string, Set<string>>>()
-  for (const r of foaie.randuri.slice(1)) {
-    const cod = r[col('cod1')] ?? ''
-    const articol = articole.get(cod)
-    if (articol === undefined) continue
-    const um = articol.um.trim().toUpperCase()
-    if (um !== 'ML' && um !== 'M') continue
-
-    const produs = produsulBonului.get(`${r[col('nr')] ?? ''}#${r[col('id_unic')] ?? ''}`)
-    if (produs === undefined) continue
-
-    const fam = familie(articol.denumire)
-    const peProdus = peFamilie.get(fam) ?? new Map<string, Set<string>>()
-    const variante = peProdus.get(produs) ?? new Set<string>()
-    variante.add(cod)
-    peProdus.set(produs, variante)
-    peFamilie.set(fam, peProdus)
-  }
-
-  const alese = new Set<string>()
-  for (const [fam, peProdus] of peFamilie) {
-    const produse = [...peProdus.values()]
-    if (produse.length < 3) continue
-    const schimbate = produse.filter((v) => v.size > 1).length
-    if (schimbate / produse.length >= VARIATIE_MINIMA) alese.add(fam)
-  }
-  return alese
-}
 
 // ---------------------------------------------------------------------------
 
@@ -172,41 +103,8 @@ const linii = await clientSql<Linie[]>`
     and upper(btrim(rl.um)) in ('ML', 'M')
   order by m.cod, rl.nr_linie`
 
-const repetari = new Map<string, number>()
-for (const l of linii) repetari.set(l.cod_saga, (repetari.get(l.cod_saga) ?? 0) + 1)
-
-const familie = (denumire: string): string =>
-  denumire.trim().toUpperCase().split(/\s+/)[0] ?? ''
-
-/** Families that change from one bon to the next, on the same product. */
-const variaza = familiiCareVariaza()
-
-const esteStofa = (l: Linie): boolean => {
-  if (esteFunctional(l.denumire)) return false
-  if ((repetari.get(l.cod_saga) ?? 0) <= REPETARI_MAXIME) return true
-  return variaza.has(familie(l.denumire))
-}
-
-const textile = linii.filter(esteStofa)
-
-// Second pass, for the recipes with no branded fabric in them at all: there the
-// plain polyester is what the product is covered in, and it is as much a choice
-// as any other. The test has to ask the database, not just this run — the lines
-// marked on an earlier pass are filtered out of the query above, and without
-// them every recipe looks bare.
-const marcateDeja = new Set(
-  (
-    await clientSql<{ recipe_id: string }[]>`
-      select distinct recipe_id from recipe_line where este_variabil`
-  ).map((r) => r.recipe_id),
-)
-const cuStofa = new Set([...textile.map((l) => l.recipe_id), ...marcateDeja])
-const simple = linii.filter(
-  (l) => l.denumire.toUpperCase() === TESATURA_SIMPLA && !cuStofa.has(l.recipe_id),
-)
-textile.push(...simple)
-
-const excluse = linii.filter((l) => !textile.includes(l))
+const textile = linii.filter((l) => !esteFunctional(l.denumire))
+const excluse = linii.filter((l) => esteFunctional(l.denumire))
 
 const peModel = new Map<string, Linie[]>()
 for (const l of textile) {
@@ -217,9 +115,7 @@ for (const l of textile) {
 
 console.log(
   `\n${textile.length} linii de stofă, pe ${peModel.size} rețete din ` +
-    `${new Set(linii.map((l) => l.model)).size}` +
-    (simple.length > 0 ? `, din care ${simple.length} sunt ${TESATURA_SIMPLA}` : '') +
-    ':\n',
+    `${new Set(linii.map((l) => l.model)).size}:\n`,
 )
 for (const [model, grup] of [...peModel].sort()) {
   for (const l of grup) {
@@ -236,10 +132,7 @@ if (faraStofa.length > 0) {
   for (const m of faraStofa) console.log(`  ${m}`)
 }
 
-console.log(
-  `\n${excluse.length} linii în ML/M lăsate fixe — funcționale, sau familii care nu se ` +
-    'schimbă niciodată la același produs:',
-)
+console.log(`\n${excluse.length} linii în ML/M lăsate fixe — nu sunt stofă:`)
 const dupaDenumire = new Map<string, number>()
 for (const l of excluse) {
   const cheie = l.denumire.split(/\s+/)[0] ?? l.denumire
