@@ -1,4 +1,5 @@
 import { recipe, recipeLine } from '@samobi/shared/db'
+import { esteTextil } from '@samobi/shared/nomenclator'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 
 import { clientSql, db } from '../src/db.js'
@@ -41,43 +42,6 @@ const scrie = process.argv.slice(2).includes('--scrie')
 
 
 
-/**
- * Names that describe a function rather than a fabric. Everything a customer
- * chooses is a brand and a number — MANGO 1307, QUELLE 83, STORM 06 — while
- * everything structural says what it is.
- */
-const CUVINTE_FUNCTIONALE = [
-  'FERMOAR',
-  'VATEX',
-  'VATELINA',
-  'LEZARDA',
-  'CORDELINA',
-  'LONJERON',
-  'BANDA',
-  'ELASTIC',
-  'CHINGA',
-  'SFOARA',
-  'SNUR',
-  'PANGLICA',
-  'ATA',
-  'PLASA',
-  'PVC',
-  'FOLIE',
-  'ARC',
-  'BURETE',
-  'RIPS',
-  'DUBLURA',
-  'CANT',
-  'CHEDER',
-  'RELNET',
-  'SFOARA',
-]
-
-const esteFunctional = (denumire: string): boolean =>
-  CUVINTE_FUNCTIONALE.some((cuvant) => denumire.toUpperCase().startsWith(cuvant))
-
-
-
 // ---------------------------------------------------------------------------
 
 interface Linie {
@@ -103,8 +67,8 @@ const linii = await clientSql<Linie[]>`
     and upper(btrim(rl.um)) in ('ML', 'M')
   order by m.cod, rl.nr_linie`
 
-const textile = linii.filter((l) => !esteFunctional(l.denumire))
-const excluse = linii.filter((l) => esteFunctional(l.denumire))
+const textile = linii.filter((l) => esteTextil(l.denumire, l.um))
+const excluse = linii.filter((l) => !esteTextil(l.denumire, l.um))
 
 const peModel = new Map<string, Linie[]>()
 for (const l of textile) {

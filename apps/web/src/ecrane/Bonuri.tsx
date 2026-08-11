@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { apel, EroareApi } from '../lib/api.js'
+import { AlegeStofe } from '../ui/AlegeStofe.js'
 import { CautaArticol, type ArticolGasit } from '../ui/CautaArticol.js'
 import { useNotificari } from '../ui/Notificari.js'
 import { cant, dataRo, normalizeazaZecimala } from '../ui/numere.js'
@@ -41,7 +42,10 @@ interface LinieVariabila {
   nrLinie: number
   grup: string
   um: string
+  cantitate: string | null
   categorieVariabila: string | null
+  stofaAnterioaraCod: string | null
+  stofaAnterioaraDenumire: string | null
 }
 
 interface Consum {
@@ -149,6 +153,17 @@ function BonNou() {
   const dimensiune = context.data?.dimensiuni.find((d) => d.id === dimensiuneId)
   const liniiVariabile = context.data?.liniiVariabile ?? []
   const toateAlese = liniiVariabile.every((l) => alegeri[l.id] !== undefined)
+  // The fabric gets its own screen: it is the choice made on every bon, while
+  // the rest of the variable lines are the rare exception.
+  const stofe = liniiVariabile.filter((l) => l.categorieVariabila === 'TEXTIL')
+  const alteVariabile = liniiVariabile.filter((l) => l.categorieVariabila !== 'TEXTIL')
+
+  const alege = (linieId: string, articol: ArticolGasit) =>
+    setAlegeri((curente) => ({ ...curente, [linieId]: articol }))
+  const sterge = (linieId: string) =>
+    setAlegeri((curente) =>
+      Object.fromEntries(Object.entries(curente).filter(([cheie]) => cheie !== linieId)),
+    )
 
   const cantitateCurata = normalizeazaZecimala(cantitate)
   const cantitateInvalida = cantitate.trim() !== '' && cantitateCurata === null
@@ -342,18 +357,32 @@ function BonNou() {
         </p>
       )}
 
-      {liniiVariabile.length > 0 && (
+      {stofe.length > 0 && (
+        <AlegeStofe
+          linii={stofe}
+          alese={alegeri}
+          onAlege={alege}
+          onAlegeToate={(articol) =>
+            setAlegeri((curente) => ({
+              ...curente,
+              ...Object.fromEntries(stofe.map((l) => [l.id, articol])),
+            }))
+          }
+          onSterge={sterge}
+        />
+      )}
+
+      {alteVariabile.length > 0 && (
         <div className="rounded-lg border border-info-border bg-info-bg p-4">
           <h3 className="text-sm font-semibold text-info">
-            Materiale de ales ({liniiVariabile.filter((l) => alegeri[l.id] !== undefined).length}/
-            {liniiVariabile.length})
+            Materiale de ales ({alteVariabile.filter((l) => alegeri[l.id] !== undefined).length}/
+            {alteVariabile.length})
           </h3>
           <p className="mt-1 text-sm text-ink-secondary">
-            Rețeta dă metrajul; codul concret se alege acum. Același model în altă stofă folosește
-            aceeași rețetă.
+            Rețeta dă cantitatea; codul concret se alege acum.
           </p>
           <ul className="mt-3 space-y-2">
-            {liniiVariabile.map((linie) => {
+            {alteVariabile.map((linie) => {
               const ales = alegeri[linie.id]
               return (
                 <li key={linie.id} className="flex flex-wrap items-center gap-2 text-sm">
@@ -363,7 +392,7 @@ function BonNou() {
                   {ales === undefined ? (
                     <CautaArticol
                       umAsteptat={linie.um}
-                      onAlege={(a) => setAlegeri((curente) => ({ ...curente, [linie.id]: a }))}
+                      onAlege={(a) => alege(linie.id, a)}
                       placeholder={
                         linie.categorieVariabila === null
                           ? 'caută material…'
@@ -379,13 +408,7 @@ function BonNou() {
                       <span className="text-xs text-ink-muted">({ales.um})</span>
                       <button
                         type="button"
-                        onClick={() =>
-                          setAlegeri((curente) =>
-                            Object.fromEntries(
-                              Object.entries(curente).filter(([cheie]) => cheie !== linie.id),
-                            ),
-                          )
-                        }
+                        onClick={() => sterge(linie.id)}
                         className="text-xs text-brand underline underline-offset-2"
                       >
                         schimbă

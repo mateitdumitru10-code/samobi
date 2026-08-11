@@ -109,7 +109,13 @@ export async function incarcaPentruCalcul(modelId: string, dimensiuneId: string)
       versiune: reteta.versiune,
       linii: liniiCalcul,
     },
-    /** Lines whose article is chosen per bon, so the UI knows what to ask for. */
+    /**
+     * Lines whose article is chosen per bon.
+     *
+     * The metreage travels with them, because choosing a fabric for twenty-two
+     * metres and for one are not the same decision, and so does whatever the
+     * recipe last recorded — a bon is usually the same cover as the last one.
+     */
     liniiVariabile: linii
       .filter((l) => l.esteVariabil)
       .map((l) => ({
@@ -117,7 +123,9 @@ export async function incarcaPentruCalcul(modelId: string, dimensiuneId: string)
         nrLinie: l.nrLinie,
         grup: l.grup,
         um: l.um,
+        cantitate: l.cantitateFixa,
         categorieVariabila: l.categorieVariabila,
+        ...stofaAnterioara(l.observatii),
       })),
   }
 }
@@ -153,6 +161,23 @@ export async function incarcaPentruComparatie(modelId: string) {
     reteta: context.reteta,
     dimensiuni,
     denumiri: new Map(articole.map((a) => [a.codSaga, a.denumire])),
+  }
+}
+
+/**
+ * The fabric this recipe line carried when it came out of SAGA.
+ *
+ * Kept in the note when the line was made variable, because it is the best
+ * first guess there is: the same model usually goes out in the same cover.
+ */
+function stofaAnterioara(observatii: string | null): {
+  stofaAnterioaraCod: string | null
+  stofaAnterioaraDenumire: string | null
+} {
+  const potrivire = /stofa folosită atunci: (\d{6,10}) (.+)$/.exec(observatii ?? '')
+  return {
+    stofaAnterioaraCod: potrivire?.[1] ?? null,
+    stofaAnterioaraDenumire: potrivire?.[2]?.trim() ?? null,
   }
 }
 

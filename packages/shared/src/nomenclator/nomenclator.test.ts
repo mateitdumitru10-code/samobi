@@ -8,6 +8,7 @@ import {
   scorSimilaritate,
   sugereaza,
 } from './similaritate.js'
+import { esteTextil } from './textile.js'
 import { determinaTip, tipDupaCont, tipDupaDenumire } from './tip.js'
 import { esteUmCunoscuta, normalizeazaUm } from './um.js'
 
@@ -191,5 +192,44 @@ describe('când o potrivire se poate accepta fără om', () => {
   it('extrage cifrele în ordine', () => {
     expect(numereDin('POL.2538 1900x680x40')).toEqual(['2538', '1900', '680', '40'])
     expect(numereDin('ADEZIV')).toEqual([])
+  })
+})
+
+describe('esteTextil', () => {
+  it('acceptă stofele, oricum s-ar numi', () => {
+    // Nume de brand, nume generic, cu și fără prefix — nimic nu le leagă în
+    // afară de unitatea de măsură, și de aceea regula e o listă de excluderi.
+    for (const nume of [
+      'KALINKA 05',
+      'OPTIMA 912',
+      'QUELLE83',
+      'TESATURA POLIESTER',
+      'STOFA ENJOY LUX NEW 58 FOREST',
+      'MATERIAL MATLASAT ARLIN 210+VATELINA',
+      'IMITATIE PIELE ECO',
+    ]) {
+      expect(esteTextil(nume, 'ML'), nume).toBe(true)
+    }
+  })
+
+  it('respinge ce se vinde tot la metru și nu ajunge pe canapea', () => {
+    for (const nume of [
+      'FERMOAR 500 NEGRU',
+      'VATELINA 100GR',
+      'CHINGA ELASTICA 60MM',
+      'ABS NUC PARONA H1715ST12 23/0.4MM',
+      'TEAVA RECTANGULARA 40X20',
+      'CABLU AV TV',
+      'TNT NEGRU 80GR',
+      'PROFIL C40*60*20U18',
+    ]) {
+      expect(esteTextil(nume, 'ML'), nume).toBe(false)
+    }
+  })
+
+  it('respinge orice altă unitate de măsură', () => {
+    expect(esteTextil('KALINKA 05', 'BUC')).toBe(false)
+    expect(esteTextil('KALINKA 05', 'MP')).toBe(false)
+    expect(esteTextil('KALINKA 05', 'm')).toBe(true)
   })
 })

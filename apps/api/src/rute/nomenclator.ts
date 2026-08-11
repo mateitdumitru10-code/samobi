@@ -7,6 +7,7 @@ import {
   unmappedMaterial,
   unmappedMaterialOcurenta,
 } from '@samobi/shared/db'
+import { esteTextil } from '@samobi/shared/nomenclator'
 import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
@@ -140,6 +141,88 @@ export function ruteNomenclator(app: FastifyInstance, verifica: VerificatorToken
         sincronizatLa: r.sincronizatLa?.toISOString() ?? null,
       })),
     }
+  })
+
+  /**
+   * The fabrics, ordered by how much of the range uses them.
+   *
+   * A bon almost always goes out in a fabric the workshop already works with,
+   * so the screen offers those first and falls back to searching the whole
+   * catalogue. „Popular" is measured over the recipes rather than over past
+   * bons: the recipes came out of a year and a half of real production, and
+   * there are no bons yet to learn from.
+   */
+  app.get('/nomenclator/stofe', oricineAutentificat, async (cerere) => {
+    const { cauta, limita, toate } = z
+      .object({
+        cauta: z.string().trim().max(120).optional(),
+        limita: z.coerce.number().int().min(1).max(200).default(24),
+        /**
+         * Drops the fabric test and searches everything sold by the metre. A
+         * new fabric arrives before anyone updates a rule about names, and the
+         * bon still has to go out that day.
+         */
+        toate: z
+          .enum(['true', 'false'])
+          .optional()
+          .transform((v) => v === 'true'),
+      })
+      .parse(cerere.query)
+
+    const cautare = cauta === undefined || cauta === '' ? null : `%${cauta}%`
+
+    // Counted from the note each variable line carries, not from `cod_saga`:
+    // a line that asks for a fabric has no article on it, by construction.
+    // `[0-9]` rather than `\d`, which a template literal eats before Postgres
+    // ever sees it — the pattern then matched nothing and every count was zero.
+    const folosiri = new Map(
+      (
+        await db.execute<{ cod: string; n: number }>(sql`
+          select substring(${recipeLine.observatii} from 'atunci: ([0-9]{6,10})') as cod,
+                 count(*)::int as n
+          from ${recipeLine}
+          where ${recipeLine.observatii} like '%stofa folosită atunci:%'
+          group by 1`)
+      ).map((r) => [r.cod, Number(r.n)]),
+    )
+
+    const conditii: SQL[] = [
+      eq(sagaArticle.activ, true),
+      sql`upper(btrim(${sagaArticle.um})) in ('ML', 'M')`,
+    ]
+    if (!toate) {
+      // Every one of the 103 fabrics the recipes name is filed here. Without
+      // this the metre is the only test, and the metre also buys electrical
+      // cable and steel profile.
+      conditii.push(eq(sagaArticle.gestiuneImplicita, 'MATERII PRIME'))
+    }
+    if (cautare !== null) {
+      const cautaIn = or(ilike(sagaArticle.denumire, cautare), ilike(sagaArticle.codSaga, cautare))
+      if (cautaIn !== undefined) conditii.push(cautaIn)
+    }
+
+    const randuri = await db
+      .select({
+        codSaga: sagaArticle.codSaga,
+        denumire: sagaArticle.denumire,
+        um: sagaArticle.um,
+        pretReferinta: sagaArticle.pretReferinta,
+        pretConsum: sagaArticle.pretConsum,
+        stoc: sagaArticle.stoc,
+        tip: sagaArticle.tip,
+      })
+      .from(sagaArticle)
+      .where(and(...conditii))
+      .orderBy(asc(sagaArticle.denumire))
+
+    // The unit alone lets zips and webbing through; the shared rule keeps them
+    // out, and it is the same one the importer marks recipe lines with.
+    const stofe = randuri
+      .filter((a) => toate || esteTextil(a.denumire, a.um))
+      .map((a) => ({ ...a, folosiri: folosiri.get(a.codSaga) ?? 0 }))
+      .sort((a, b) => b.folosiri - a.folosiri || a.denumire.localeCompare(b.denumire))
+
+    return { stofe: stofe.slice(0, limita), total: stofe.length }
   })
 
   /** Distinct values, so the filters offer what the data actually contains. */
