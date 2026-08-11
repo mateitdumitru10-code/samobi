@@ -36,21 +36,16 @@ afterAll(async () => {
 })
 
 describe.skipIf(!areBazaDeDate)('constrângeri în baza de date', () => {
-  it('respinge două rețete active pe același model', async () => {
+  it('respinge două rețete cu același număr de versiune pe un model', async () => {
     await inTranzactie(async (tx) => {
       const { modelId } = await pregatesteModel(tx)
 
-      await tx`insert into recipe (model_id, versiune, status)
-               values (${modelId}, 1, 'activa')`
+      await tx`insert into recipe (model_id, versiune) values (${modelId}, 1)`
 
       const err = await respinge(tx, () =>
-        tx`insert into recipe (model_id, versiune, status) values (${modelId}, 2, 'activa')`,
+        tx`insert into recipe (model_id, versiune) values (${modelId}, 1)`,
       )
-      expect(err.constraint_name).toBe('one_active_recipe_per_model')
-
-      // O versiune noua in draft este permisa: asa se modifica o reteta activa.
-      await tx`insert into recipe (model_id, versiune, status)
-               values (${modelId}, 2, 'draft')`
+      expect(err.constraint_name).toBe('recipe_model_versiune_unic')
     })
   })
 
@@ -186,22 +181,18 @@ describe.skipIf(!areBazaDeDate)('constrângeri în baza de date', () => {
     })
   })
 
-  it('respinge o rețetă aprobată de propriul autor', async () => {
+  it('respinge o rețetă într-o stare care nu mai există', async () => {
     await inTranzactie(async (tx) => {
       const { modelId } = await pregatesteModel(tx)
-      // Un uuid arbitrar: constrangerea compara coloanele, nu existenta profilului.
+      // Fluxul de aprobare a fost scos: o rețetă e mereu în lucru. Constrangerea
+      // e ce impiedica o stare veche sa reapara dintr-un script ramas in urma.
       const err = await respinge(
         tx,
-        () => tx`insert into recipe (model_id, versiune, creat_de, aprobat_de, aprobat_la)
-                 values (${modelId}, 1,
-                         '00000000-0000-4000-8000-000000000001',
-                         '00000000-0000-4000-8000-000000000001', now())`,
+        () => tx`insert into recipe (model_id, versiune, status)
+                 values (${modelId}, 1, 'activa')`,
       )
-      // Poate cadea pe CHECK sau pe FK-ul catre profile; ambele sunt corecte.
-      expect(['23514', '23503']).toContain(err.code)
-      if (err.code === '23514') {
-        expect(err.constraint_name).toBe('recipe_aprobare_nu_de_autor')
-      }
+      expect(err.code).toBe('23514')
+      expect(err.constraint_name).toBe('recipe_status_valid')
     })
   })
 })

@@ -152,9 +152,9 @@ export function App() {
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         {sectiuneCurenta === 'utilizatori' && eu.rol === 'admin' && <Conturi utilizator={eu} />}
-        {sectiuneCurenta === 'bonuri' && <Bonuri utilizator={eu} />}
-        {sectiuneCurenta === 'modele' && <Modele utilizator={eu} />}
-        {sectiuneCurenta === 'nomenclator' && <Nomenclator utilizator={eu} />}
+        {sectiuneCurenta === 'bonuri' && <Bonuri />}
+        {sectiuneCurenta === 'modele' && <Modele />}
+        {sectiuneCurenta === 'nomenclator' && <Nomenclator />}
         {sectiuneCurenta === 'rapoarte' && <Rapoarte utilizator={eu} />}
       </main>
     </div>

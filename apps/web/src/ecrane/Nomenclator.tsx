@@ -1,4 +1,3 @@
-import type { UtilizatorCurent } from '@samobi/shared/scheme'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 
@@ -87,13 +86,11 @@ const ETICHETE_TIP: Record<string, string> = {
 
 const PE_PAGINA = 50
 
-export function Nomenclator({ utilizator }: { utilizator: UtilizatorCurent }) {
-  const poateImporta = utilizator.rol === 'admin' || utilizator.rol === 'tehnolog'
-
+export function Nomenclator() {
   return (
     <section className="space-y-8">
-      {poateImporta && <PanouImport />}
-      <CoadaMapare poateEdita={poateImporta} />
+      <PanouImport />
+      <CoadaMapare />
       <Catalog />
     </section>
   )
@@ -114,7 +111,7 @@ export function Nomenclator({ utilizator }: { utilizator: UtilizatorCurent }) {
  * notification it raises, which is the version of safety that survives being
  * done a hundred times.
  */
-function CoadaMapare({ poateEdita }: { poateEdita: boolean }) {
+function CoadaMapare() {
   const queryClient = useQueryClient()
   const notificari = useNotificari()
   const [rezolvateAcum, setRezolvateAcum] = useState(0)
@@ -249,9 +246,6 @@ function CoadaMapare({ poateEdita }: { poateEdita: boolean }) {
           Alege articolul o dată; linia se adaugă în fiecare rețetă care îl aștepta. Tastele{' '}
           <Tasta>1</Tasta> <Tasta>2</Tasta> <Tasta>3</Tasta> aleg sugestia corespunzătoare.
         </p>
-        {!poateEdita && (
-          <p className="mt-2 text-sm text-ink-muted">Maparea o face un tehnolog sau un admin.</p>
-        )}
       </div>
 
       <ul className="divide-y divide-line">
@@ -259,7 +253,6 @@ function CoadaMapare({ poateEdita }: { poateEdita: boolean }) {
           <RandNemapat
             key={intrare.id}
             intrare={intrare}
-            poateEdita={poateEdita}
             seLucreaza={rezolva.isPending && rezolva.variables?.id === intrare.id}
             onRezolva={(codSaga, denumire) =>
               rezolva.mutate({ id: intrare.id, codSaga, denumire })
@@ -285,8 +278,7 @@ function CoadaMapare({ poateEdita }: { poateEdita: boolean }) {
                 <RandNemapat
                   key={intrare.id}
                   intrare={intrare}
-                  poateEdita={poateEdita}
-                  seLucreaza={rezolva.isPending && rezolva.variables?.id === intrare.id}
+                        seLucreaza={rezolva.isPending && rezolva.variables?.id === intrare.id}
                   onRezolva={(codSaga, denumire) =>
                     rezolva.mutate({ id: intrare.id, codSaga, denumire })
                   }
@@ -312,13 +304,11 @@ function Tasta({ children }: { children: string }) {
 /** One queued material: the evidence, three keyed suggestions, and a search. */
 function RandNemapat({
   intrare,
-  poateEdita,
   seLucreaza,
   onRezolva,
   onAmana,
 }: {
   intrare: Nemapat
-  poateEdita: boolean
   seLucreaza: boolean
   onRezolva: (codSaga: string, denumire: string) => void
   onAmana: () => void
@@ -339,7 +329,7 @@ function RandNemapat({
     <li
       className={`px-5 py-4 ${seLucreaza ? 'opacity-60' : ''}`}
       onKeyDown={(e) => {
-        if (!poateEdita || seLucreaza) return
+        if (seLucreaza) return
         if (e.target instanceof HTMLInputElement) return
         const index = ['1', '2', '3'].indexOf(e.key)
         const aleasa = index < 0 ? undefined : primele[index]
@@ -369,7 +359,7 @@ function RandNemapat({
         >
           {deschis ? 'ascunde' : 'unde apare'}
         </button>
-        {poateEdita && (
+        {(
           <button
             type="button"
             onClick={onAmana}
@@ -390,7 +380,7 @@ function RandNemapat({
         </ul>
       )}
 
-      {poateEdita && (
+      {(
         <>
           <div className="mt-3 flex flex-col gap-1.5">
             {primele.map((s, i) => (

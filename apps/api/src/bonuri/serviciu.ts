@@ -82,16 +82,16 @@ export async function incarcaPentruCalcul(modelId: string, cerere: CerereDimensi
     codSagaProdus = modelul.codSagaProdusComanda
   }
 
-  const versiuni = await db
+  // One recipe per model, edited in place. The bon still pins its id, and each
+  // bon line carries the formula it was computed from, so a document stays
+  // explicable after the recipe moves on — but it can no longer be recomputed
+  // from the recipe, which is the price of dropping versions.
+  const [reteta] = await db
     .select()
     .from(recipe)
     .where(eq(recipe.modelId, modelId))
     .orderBy(desc(recipe.versiune))
-
-  // The approved version, always, when there is one. A bon must be built from
-  // what was signed off, not from whatever a tehnolog happens to be editing.
-  // Before anything is approved, the newest draft stands in.
-  const reteta = versiuni.find((r) => r.status === 'activa') ?? versiuni[0]
+    .limit(1)
 
   if (reteta === undefined) throw new CerereInvalida('Modelul nu are rețetă.')
 

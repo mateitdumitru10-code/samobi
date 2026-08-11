@@ -26,7 +26,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { scrieAudit } from '../audit.js'
-import { autentifica, ceruRol, utilizatorul, type VerificatorToken } from '../auth.js'
+import { autentifica, ceruRol, TOTI, utilizatorul, type VerificatorToken } from '../auth.js'
 import { incarcaPentruComparatie } from '../bonuri/serviciu.js'
 import { db } from '../db.js'
 import { CerereInvalida, codPostgres, Conflict, NuExista } from '../erori.js'
@@ -158,9 +158,9 @@ async function verificaFormulele(
 
 export function ruteModele(app: FastifyInstance, verifica: VerificatorToken) {
   const oricine = {
-    preHandler: [autentifica(verifica), ceruRol('admin', 'tehnolog', 'operator', 'contabil')],
+    preHandler: [autentifica(verifica), ceruRol(...TOTI)],
   }
-  const doarTehnolog = { preHandler: [autentifica(verifica), ceruRol('admin', 'tehnolog')] }
+  const doarTehnolog = { preHandler: [autentifica(verifica), ceruRol(...TOTI)] }
 
   app.get('/modele', oricine, async (cerere) => {
     const { includeInactive } = z

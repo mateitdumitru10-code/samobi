@@ -82,6 +82,16 @@ export function autentifica(verifica: VerificatorToken): preHandlerHookHandler {
  * Every route states its own roles. There is no inherited permission and no
  * default-allow — a route without this guard is a route nobody authorised.
  */
+/**
+ * Every role, which is to say: being signed in is the whole check.
+ *
+ * The factory has five people and they cover for each other; a tehnolog who
+ * cannot issue a bon on the day the operator is away is a rule that stops work
+ * rather than protecting it. Accounts stay with the admin — that is the one
+ * place where a mistake locks somebody out of their own tool.
+ */
+export const TOTI: readonly RolValidat[] = ['admin', 'tehnolog', 'operator', 'contabil']
+
 export function ceruRol(...roluri: readonly RolValidat[]): preHandlerHookHandler {
   return async (cerere) => {
     const utilizator = cerere.utilizator

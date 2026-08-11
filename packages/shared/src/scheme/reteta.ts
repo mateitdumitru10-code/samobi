@@ -201,49 +201,4 @@ export interface RezultatValidareFormula {
   } | null
 }
 
-// ---------------------------------------------------------------------------
-// Versionare si aprobare
-// ---------------------------------------------------------------------------
-
-export const schemaRespingere = z.object({
-  motiv: z
-    .string()
-    .trim()
-    .min(5, 'Scrie de ce o respingi — tehnologul are nevoie să știe ce să corecteze.')
-    .max(500),
-})
-
-export const schemaAprobare = z.object({
-  valabilDeLa: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data are formatul AAAA-LL-ZZ.')
-    .optional(),
-})
-
-export interface RandVersiune {
-  id: string
-  versiune: number
-  status: StatusReteta
-  valabilDeLa: string | null
-  aprobatDe: string | null
-  aprobatLa: string | null
-  /** Why the last submission was turned down; cleared on the next submission. */
-  motivRespingere: string | null
-  respinsLa: string | null
-  creatLa: string
-  nrLinii: number
-  nrBonuri: number
-}
-
-/** One line's fate between two versions. */
-export type FelSchimbare = 'adaugat' | 'sters' | 'modificat' | 'neschimbat'
-
-export interface SchimbareLinie {
-  fel: FelSchimbare
-  nrLinie: number
-  codSaga: string | null
-  denumire: string | null
-  campuri: { camp: string; inainte: string | null; dupa: string | null }[]
-}
-
 export type StatusReteta = z.infer<typeof schemaStatusReteta>

@@ -13,7 +13,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { scrieAudit } from '../audit.js'
-import { autentifica, ceruRol, utilizatorul, type VerificatorToken } from '../auth.js'
+import { autentifica, ceruRol, TOTI, utilizatorul, type VerificatorToken } from '../auth.js'
 import {
   calculeazaCuDenumiri,
   incarcaPentruCalcul,
@@ -52,13 +52,13 @@ function detaliiCalcul(err: EroareCalcul): unknown {
 
 export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
   const oricine = {
-    preHandler: [autentifica(verifica), ceruRol('admin', 'tehnolog', 'operator', 'contabil')],
+    preHandler: [autentifica(verifica), ceruRol(...TOTI)],
   }
   const poateEmite = {
-    preHandler: [autentifica(verifica), ceruRol('admin', 'tehnolog', 'operator')],
+    preHandler: [autentifica(verifica), ceruRol(...TOTI)],
   }
   const poateExporta = {
-    preHandler: [autentifica(verifica), ceruRol('admin', 'contabil', 'operator')],
+    preHandler: [autentifica(verifica), ceruRol(...TOTI)],
   }
 
   /** What a bon needs before it can be filled in: dimensions and variable lines. */

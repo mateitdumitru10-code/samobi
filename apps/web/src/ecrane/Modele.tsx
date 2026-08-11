@@ -1,5 +1,4 @@
 import { FAMILII } from '@samobi/shared/db'
-import type { UtilizatorCurent } from '@samobi/shared/scheme'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState, type FormEvent } from 'react'
 
@@ -43,8 +42,7 @@ function mm(valoare: string | null): string {
   return String(Number(valoare))
 }
 
-export function Modele({ utilizator }: { utilizator: UtilizatorCurent }) {
-  const poateEdita = utilizator.rol === 'admin' || utilizator.rol === 'tehnolog'
+export function Modele() {
   const [selectat, setSelectat] = useState<string | null>(null)
   const [cauta, setCauta] = useState('')
   // Raised by the recipe editor. Switching models unmounts it, and forty
@@ -81,7 +79,7 @@ export function Modele({ utilizator }: { utilizator: UtilizatorCurent }) {
     <section className="space-y-6">
       <div className="flex flex-wrap gap-6">
         <div className="w-full space-y-3 lg:max-w-xs">
-          {poateEdita && <FormularModel />}
+          <FormularModel />
 
           <input
             value={cauta}
@@ -152,12 +150,7 @@ export function Modele({ utilizator }: { utilizator: UtilizatorCurent }) {
               indiciu="Ca să-i vezi dimensiunile, rețeta și versiunile."
             />
           ) : (
-            <DetaliuModel
-              modelId={selectat}
-              poateEdita={poateEdita}
-              utilizator={utilizator}
-              onModificat={onModificat}
-            />
+            <DetaliuModel modelId={selectat} onModificat={onModificat} />
           )}
         </div>
       </div>
@@ -247,13 +240,9 @@ function FormularModel() {
 
 function DetaliuModel({
   modelId,
-  poateEdita,
-  utilizator,
   onModificat,
 }: {
   modelId: string
-  poateEdita: boolean
-  utilizator: UtilizatorCurent
   onModificat: (modificat: boolean) => void
 }) {
   const detaliu = useQuery({
@@ -289,32 +278,19 @@ function DetaliuModel({
         <p className="font-mono text-xs text-ink-muted">{detaliu.data.cod}</p>
       </div>
 
-      <Dimensiuni modelId={modelId} dimensiuni={detaliu.data.dimensiuni} poateEdita={poateEdita} />
+      <Dimensiuni modelId={modelId} dimensiuni={detaliu.data.dimensiuni} />
 
-      <LaComanda model={detaliu.data} poateEdita={poateEdita} />
+      <LaComanda model={detaliu.data} />
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-ink">Rețetă</h3>
-        <RetetaEditor
-          modelId={modelId}
-          poateEdita={poateEdita}
-          utilizator={utilizator}
-          onModificat={onModificat}
-        />
+        <RetetaEditor modelId={modelId} onModificat={onModificat} />
       </div>
     </div>
   )
 }
 
-function Dimensiuni({
-  modelId,
-  dimensiuni,
-  poateEdita,
-}: {
-  modelId: string
-  dimensiuni: Dimensiune[]
-  poateEdita: boolean
-}) {
+function Dimensiuni({ modelId, dimensiuni }: { modelId: string; dimensiuni: Dimensiune[] }) {
   const queryClient = useQueryClient()
   const notificari = useNotificari()
   const [deschis, setDeschis] = useState(false)
@@ -359,15 +335,13 @@ function Dimensiuni({
     <div>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ink">Dimensiuni</h3>
-        {poateEdita && (
-          <button
-            type="button"
-            onClick={() => setDeschis((d) => !d)}
-            className="buton buton-secundar buton-mic"
-          >
-            {deschis ? 'Renunță' : 'Adaugă dimensiune'}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setDeschis((d) => !d)}
+          className="buton buton-secundar buton-mic"
+        >
+          {deschis ? 'Renunță' : 'Adaugă dimensiune'}
+        </button>
       </div>
 
       {deschis && (

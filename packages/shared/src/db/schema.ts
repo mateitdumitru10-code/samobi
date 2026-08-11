@@ -14,7 +14,6 @@ import {
   text,
   timestamp,
   unique,
-  uniqueIndex,
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
@@ -328,7 +327,9 @@ export const dimension = pgTable(
 // Retete
 // ---------------------------------------------------------------------------
 
-export const STATUSURI_RETETA = ['draft', 'in_aprobare', 'activa', 'arhivata'] as const
+/** Only one, since the approval flow was removed. Kept as a list so the
+ * column can grow a state again without a migration hunt. */
+export const STATUSURI_RETETA = ['draft'] as const
 export type StatusReteta = (typeof STATUSURI_RETETA)[number]
 
 export const recipe = pgTable(
@@ -339,43 +340,26 @@ export const recipe = pgTable(
       .notNull()
       .references(() => model.id),
     versiune: integer('versiune').notNull(),
+    /**
+     * Only ever 'draft'.
+     *
+     * The approval flow — submit, approve, reject, archive — was taken out: in a
+     * factory of five people who cover for each other, waiting for a second
+     * signature stopped work rather than protecting it. What went with it is
+     * immutability: a recipe is now edited in place, so a bon can no longer be
+     * recomputed from it. Each bon line carries the formula and the dimensions
+     * it was computed from, which is what keeps the document explicable.
+     */
     status: text('status').notNull().default('draft'),
-    valabilDeLa: date('valabil_de_la'),
-    aprobatDe: uuid('aprobat_de').references(() => profile.id),
-    aprobatLa: timestamp('aprobat_la', { withTimezone: true }),
     /** optimistic locking for the recipe grid; a conflict returns 409 */
     lockVersion: integer('lock_version').notNull().default(0),
-    /**
-     * Why the last submission was turned down.
-     *
-     * It was only written to the audit log, where the tehnolog cannot see it:
-     * the recipe came back to draft with no word on what to fix. Cleared when
-     * it is submitted again.
-     */
-    motivRespingere: text('motiv_respingere'),
-    respinsDe: uuid('respins_de').references(() => profile.id),
-    respinsLa: timestamp('respins_la', { withTimezone: true }),
     creatDe: uuid('creat_de').references(() => profile.id),
     creatLa: creatLa(),
   },
   (t) => [
     unique('recipe_model_versiune_unic').on(t.modelId, t.versiune),
-    // A model has at most one active recipe. Enforced here rather than in code,
-    // because two active recipes would make every bon ambiguous.
-    uniqueIndex('one_active_recipe_per_model')
-      .on(t.modelId)
-      .where(sql`status = 'activa'`),
-    check(
-      'recipe_status_valid',
-      sql`${t.status} in ('draft', 'in_aprobare', 'activa', 'arhivata')`,
-    ),
+    check('recipe_status_valid', sql`${t.status} = 'draft'`),
     check('recipe_versiune_pozitiva', sql`${t.versiune} > 0`),
-    // A tehnolog cannot approve their own recipe (SPEC §3).
-    check('recipe_aprobare_nu_de_autor', sql`${t.aprobatDe} is null or ${t.aprobatDe} <> ${t.creatDe}`),
-    check(
-      'recipe_aprobare_coerenta',
-      sql`(${t.aprobatDe} is null and ${t.aprobatLa} is null) or (${t.aprobatDe} is not null and ${t.aprobatLa} is not null)`,
-    ),
   ],
 ).enableRLS()
 

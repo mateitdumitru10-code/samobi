@@ -106,10 +106,10 @@ describe.skipIf(!areBazaDeDate)('roluri, capăt la capăt', () => {
     await app.close()
   })
 
-  it('un operator primește 403 și pe rutele de tehnolog', async () => {
+  it('garda de rol refuză un rol care nu e în listă', async () => {
     const app = await buildApp()
-    // Ruta de rețete apare la modulul 5; garda se testează acum, pe o rută
-    // înregistrată aici cu exact același preHandler.
+    // Business routes no longer restrict by role — only accounts do. The guard
+    // itself is still what protects them, so it is tested on a route of its own.
     const { autentifica, ceruRol, verificatorSupabase } = await import('../src/auth.js')
     app.get(
       '/test/retete',

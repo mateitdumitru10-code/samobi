@@ -34,6 +34,12 @@ ARTICOL SAGA    00022107 "PAT DAVID SOMIERA 2000/1600"
 Rețeta se definește **o singură dată per model**. Adăugarea unei dimensiuni noi nu
 presupune rescrierea rețetei.
 
+**Rețeta nu are versiuni și nu se aprobă.** Se editează în loc, de oricine e
+autentificat. Ce se pierde odată cu fluxul de aprobare este reproducerea unui bon
+din rețetă: dacă cineva schimbă rețeta azi, bonul de luna trecută nu mai poate fi
+recalculat din ea. Bonul rămâne însă explicabil singur — fiecare linie păstrează
+formula, expresia evaluată și dimensiunile din care a ieșit cantitatea.
+
 ### Tipuri de linie de rețetă
 
 | Mod | Cantitatea | Exemplu |
@@ -138,12 +144,16 @@ emise rămân valide.
 
 | Rol | Poate |
 |---|---|
-| `admin` | tot, inclusiv gestiunea conturilor și aprobarea rețetelor |
-| `tehnolog` | creează și modifică modele, dimensiuni, rețete; trimite spre aprobare |
-| `operator` | creează bonuri, calculează consumuri; **nu** modifică rețete |
-| `contabil` | generează exporturi, vede rapoarte; read-only pe restul |
+| `admin` | tot, plus invitarea și dezactivarea conturilor |
+| `tehnolog` | tot, în afară de conturi |
+| `operator` | tot, în afară de conturi |
+| `contabil` | tot, în afară de conturi |
 
-Un tehnolog nu își poate aproba propria rețetă.
+**Rolul decide un singur lucru: cine administrează conturile.** Fabrica are cinci
+oameni care se acoperă unul pe altul; un tehnolog care nu poate emite un bon în ziua
+în care operatorul lipsește e o regulă care oprește lucrul, nu una care îl apără.
+Conturile rămân la admin fiindcă acolo o greșeală încuie pe cineva afară din propria
+unealtă.
 
 ### Nomenclator
 
@@ -200,7 +210,7 @@ recipe
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid()
   model_id          uuid NOT NULL REFERENCES model
   versiune          integer NOT NULL
-  status            text NOT NULL   -- 'draft'|'in_aprobare'|'activa'|'arhivata'
+  status            text NOT NULL   -- doar 'draft'
   valabil_de_la     date
   aprobat_de        uuid REFERENCES profile(id)
   aprobat_la        timestamptz
@@ -385,7 +395,7 @@ blochează exportul bonurilor care le folosesc.
 5. **Modele și dimensiuni** — CRUD, legarea de codurile SAGA de produs
 6. **Rețetar** — grid editabil, cele trei moduri de calcul, override-uri, validare formule
 7. **Bonuri și export XLSX** — previzualizare consumuri, generare, jurnal
-8. **Versionare și aprobare** — workflow draft → activă, imutabilitate
+8. ~~**Versionare și aprobare**~~ — scos: rețeta se editează în loc
 9. **Rapoarte** — antecalculații, necesar de aprovizionare, cost material
 
 Modulele 1–7 formează un produs utilizabil.

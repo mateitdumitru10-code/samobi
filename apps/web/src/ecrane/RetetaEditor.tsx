@@ -1,5 +1,5 @@
 import { GRUPURI, MODURI_CALCUL } from '@samobi/shared/db'
-import type { RezultatValidareFormula, UtilizatorCurent } from '@samobi/shared/scheme'
+import type { RezultatValidareFormula } from '@samobi/shared/scheme'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -11,7 +11,6 @@ import { cant, lei } from '../ui/numere.js'
 import { BannerEroare, Insigna, Schelet, mesajEroare } from '../ui/stari.js'
 
 import { ComparatieDimensiuni } from './ComparatieDimensiuni.js'
-import { Versiuni } from './Versiuni.js'
 
 interface Dimensiune {
   id: string
@@ -198,16 +197,11 @@ const COLOANE_FIXE = 7
 
 export function RetetaEditor({
   modelId,
-  poateEdita,
-  utilizator,
   onModificat,
 }: {
   modelId: string
-  poateEdita: boolean
-  utilizator: UtilizatorCurent
   onModificat?: (modificat: boolean) => void
 }) {
-  const [versiuneAleasa, setVersiuneAleasa] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const notificari = useNotificari()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -222,11 +216,8 @@ export function RetetaEditor({
   const [codRau, setCodRau] = useState<Set<string>>(new Set())
 
   const reteta = useQuery({
-    queryKey: ['reteta', modelId, versiuneAleasa],
-    queryFn: () =>
-      apel<Reteta>(
-        `/modele/${modelId}/reteta${versiuneAleasa === null ? '' : `?versiuneId=${versiuneAleasa}`}`,
-      ),
+    queryKey: ['reteta', modelId],
+    queryFn: () => apel<Reteta>(`/modele/${modelId}/reteta`),
   })
 
   useEffect(() => onModificat?.(modificat), [onModificat, modificat])
@@ -283,11 +274,7 @@ export function RetetaEditor({
       // saved, and I still want mine". So it re-reads their version number and
       // saves against it, deliberately, instead of disabling the guard.
       const versiuneDeFolosit = fortat
-        ? (
-            await apel<Reteta>(
-              `/modele/${modelId}/reteta${versiuneAleasa === null ? '' : `?versiuneId=${versiuneAleasa}`}`,
-            )
-          ).lockVersion
+        ? (await apel<Reteta>(`/modele/${modelId}/reteta`)).lockVersion
         : lockVersion
 
       return apel<{ lockVersion: number }>(`/retete/${dateReteta?.id ?? ''}`, {
@@ -509,8 +496,8 @@ export function RetetaEditor({
   )
 
   const overrideFaraMotiv = overrideuri.some((o) => o.valoare.motiv.trim() === '')
-  // Only a draft is editable. Approved recipes are what bons were built on.
-  const blocat = !poateEdita || dateReteta?.status !== 'draft'
+  // Recipes have no approved state: anyone signed in edits them, always.
+  const blocat = false
   const dimAleasa = dimensiuni.find((d) => d.id === dimensiunePreview)
 
   if (reteta.isLoading) {
@@ -533,35 +520,6 @@ export function RetetaEditor({
 
   return (
     <div className="space-y-4">
-      <Versiuni
-        modelId={modelId}
-        versiuneCurenta={dateReteta?.id ?? null}
-        utilizator={utilizator}
-        areModificari={modificat}
-        onSchimbaVersiune={(id) => {
-          if (
-            modificat &&
-            !window.confirm('Ai modificări nesalvate în grilă. Le pierzi dacă schimbi versiunea.')
-          ) {
-            return
-          }
-          setModificat(false)
-          setVersiuneAleasa(id)
-        }}
-      />
-
-      {blocat && poateEdita && dateReteta !== undefined && (
-        <div className="rounded-lg border border-line bg-surface-sunken px-4 py-3 text-sm text-ink-secondary">
-          Versiunea v{dateReteta.versiune} este{' '}
-          {dateReteta.status === 'activa'
-            ? 'activă'
-            : dateReteta.status === 'in_aprobare'
-              ? 'trimisă spre aprobare'
-              : 'arhivată'}{' '}
-          și nu se mai modifică. Pentru schimbări, creează o versiune nouă din panoul de sus.
-        </div>
-      )}
-
       {serverulSASchimbat && (
         <div className="rounded-lg border border-atentie-border bg-atentie-bg px-4 py-3 text-sm">
           <p className="font-medium text-atentie">

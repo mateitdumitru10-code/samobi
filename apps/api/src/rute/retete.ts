@@ -17,7 +17,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { scrieAudit } from '../audit.js'
-import { autentifica, ceruRol, utilizatorul, type VerificatorToken } from '../auth.js'
+import { autentifica, ceruRol, TOTI, utilizatorul, type VerificatorToken } from '../auth.js'
 import { db } from '../db.js'
 import { CerereInvalida, Conflict, NuExista } from '../erori.js'
 
@@ -26,9 +26,9 @@ const schemaIdReteta = z.object({ id: z.string().uuid('Identificator invalid.') 
 
 export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
   const oricine = {
-    preHandler: [autentifica(verifica), ceruRol('admin', 'tehnolog', 'operator', 'contabil')],
+    preHandler: [autentifica(verifica), ceruRol(...TOTI)],
   }
-  const doarTehnolog = { preHandler: [autentifica(verifica), ceruRol('admin', 'tehnolog')] }
+  const doarTehnolog = { preHandler: [autentifica(verifica), ceruRol(...TOTI)] }
 
   /**
    * The recipe of a model, with its lines and their per-dimension values.
@@ -211,11 +211,6 @@ export function ruteRetete(app: FastifyInstance, verifica: VerificatorToken) {
           'Altcineva a salvat rețeta între timp. Reîncarcă pagina și reia modificările — ' +
             'altfel i-ai șterge munca.',
         )
-      }
-      if (curenta.status === 'activa' || curenta.status === 'arhivata') {
-        // Immutability of approved recipes arrives with module 8; the door is
-        // shut now so no bon can silently change meaning in the meantime.
-        throw new Conflict('O rețetă activă nu se modifică. Creează o versiune nouă.')
       }
 
       // Replace wholesale. Cascade removes the per-dimension values with them.

@@ -1,4 +1,3 @@
-import type { UtilizatorCurent } from '@samobi/shared/scheme'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
@@ -123,14 +122,11 @@ const ETICHETE_SURSA: Record<string, string> = {
 
 const GESTIUNE_IMPLICITA = 'MATERII PRIME'
 
-export function Bonuri({ utilizator }: { utilizator: UtilizatorCurent }) {
-  const poateEmite = utilizator.rol !== 'contabil'
-  const poateExporta = utilizator.rol !== 'tehnolog'
-
+export function Bonuri() {
   return (
     <section className="space-y-8">
-      {poateEmite && <BonNou />}
-      <ListaBonuri poateExporta={poateExporta} poateAnula={poateEmite} />
+      <BonNou />
+      <ListaBonuri />
     </section>
   )
 }
@@ -787,13 +783,7 @@ const FILTRE: { cheie: Filtru; eticheta: string; status?: string }[] = [
   { cheie: 'toate', eticheta: 'Toate' },
 ]
 
-function ListaBonuri({
-  poateExporta,
-  poateAnula,
-}: {
-  poateExporta: boolean
-  poateAnula: boolean
-}) {
+function ListaBonuri() {
   const queryClient = useQueryClient()
   const notificari = useNotificari()
   const [filtru, setFiltru] = useState<Filtru>('de-exportat')
@@ -877,18 +867,16 @@ function ListaBonuri({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-ink">Bonuri</h2>
-        {poateExporta && (
-          <button
-            type="button"
-            disabled={selectate.length === 0 || exporta.isPending}
-            onClick={() => exporta.mutate(false)}
-            className="buton buton-primar"
-          >
-            {exporta.isPending
-              ? 'Se generează…'
-              : `Exportă ${selectate.length} bon${selectate.length === 1 ? '' : 'uri'}`}
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={selectate.length === 0 || exporta.isPending}
+          onClick={() => exporta.mutate(false)}
+          className="buton buton-primar"
+        >
+          {exporta.isPending
+            ? 'Se generează…'
+            : `Exportă ${selectate.length} bon${selectate.length === 1 ? '' : 'uri'}`}
+        </button>
       </div>
 
       <div className="inline-flex rounded-lg bg-surface-sunken p-1">
@@ -961,7 +949,7 @@ function ListaBonuri({
           <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
             <tr>
               <th scope="col" className="w-10 px-3 py-2">
-                {poateExporta && selectabile.length > 0 && (
+                {selectabile.length > 0 && (
                   <input
                     type="checkbox"
                     checked={toateSelectate}
@@ -1022,7 +1010,7 @@ function ListaBonuri({
 
             {randuri.map((bon) => {
               const stare = ETICHETE_STATUS[bon.status] ?? { text: bon.status, fel: 'neutru' as const }
-              const bifabil = poateExporta && (bon.status === 'calculat' || filtru === 'exportat')
+              const bifabil = bon.status === 'calculat' || filtru === 'exportat'
               return (
                 <RandBonuri
                   key={bon.id}
@@ -1033,7 +1021,7 @@ function ListaBonuri({
                   onComuta={() => comuta(bon.id)}
                   desfasurat={desfasurat === bon.id}
                   onDesfasoara={() => setDesfasurat((d) => (d === bon.id ? null : bon.id))}
-                  poateAnula={poateAnula && bon.status !== 'exportat' && bon.status !== 'anulat'}
+                  poateAnula={bon.status !== 'exportat' && bon.status !== 'anulat'}
                   onAnuleaza={() => anuleaza.mutate(bon.id)}
                   coloane={nrColoane}
                 />

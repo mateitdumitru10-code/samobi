@@ -13,7 +13,7 @@ import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
-import { autentifica, ceruRol, type VerificatorToken } from '../auth.js'
+import { autentifica, ceruRol, TOTI, type VerificatorToken } from '../auth.js'
 import { calculeazaCuDenumiri } from '../bonuri/serviciu.js'
 import { db } from '../db.js'
 import { CerereInvalida } from '../erori.js'
@@ -54,7 +54,7 @@ function bani(valoare: number): string {
 
 export function ruteRapoarte(app: FastifyInstance, verifica: VerificatorToken) {
   const oricine = {
-    preHandler: [autentifica(verifica), ceruRol('admin', 'tehnolog', 'operator', 'contabil')],
+    preHandler: [autentifica(verifica), ceruRol(...TOTI)],
   }
 
   /**

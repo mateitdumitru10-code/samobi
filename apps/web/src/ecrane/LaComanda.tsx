@@ -34,7 +34,7 @@ const mm = (v: string | null): string => (v === null ? '' : String(Number(v)))
  * sees which lines stop making sense at its corners — before an operator meets
  * them with a customer waiting.
  */
-export function LaComanda({ model, poateEdita }: { model: ModelLaComanda; poateEdita: boolean }) {
+export function LaComanda({ model }: { model: ModelLaComanda }) {
   const queryClient = useQueryClient()
   const notificari = useNotificari()
 
@@ -107,7 +107,7 @@ export function LaComanda({ model, poateEdita }: { model: ModelLaComanda; poateE
               produce și la dimensiunile cerute de client, în limitele pe care le stabilești.
             </p>
           </div>
-          {poateEdita && (
+          {(
             <button
               type="button"
               onClick={() => setDeschis(true)}
@@ -133,7 +133,7 @@ export function LaComanda({ model, poateEdita }: { model: ModelLaComanda; poateE
             Interval acceptat, în milimetri. În afara lui, bonurile sunt refuzate — nu aproximate.
           </p>
         </div>
-        {poateEdita && activInitial && (
+        {activInitial && (
           <button
             type="button"
             disabled={salveaza.isPending}
@@ -155,7 +155,6 @@ export function LaComanda({ model, poateEdita }: { model: ModelLaComanda; poateE
           max={lungimeMax}
           setMin={setLungimeMin}
           setMax={setLungimeMax}
-          dezactivat={!poateEdita}
         />
         <Axa
           eticheta="Lățime"
@@ -163,7 +162,6 @@ export function LaComanda({ model, poateEdita }: { model: ModelLaComanda; poateE
           max={latimeMax}
           setMin={setLatimeMin}
           setMax={setLatimeMax}
-          dezactivat={!poateEdita}
         />
         <Axa
           eticheta="Înălțime"
@@ -171,7 +169,6 @@ export function LaComanda({ model, poateEdita }: { model: ModelLaComanda; poateE
           max={inaltimeMax}
           setMin={setInaltimeMin}
           setMax={setInaltimeMax}
-          dezactivat={!poateEdita}
           optional
         />
       </div>
@@ -188,7 +185,7 @@ export function LaComanda({ model, poateEdita }: { model: ModelLaComanda; poateE
           <span className="flex h-10 items-center gap-2 text-sm">
             <span className="font-mono text-xs">{produs.codSaga}</span>
             <span className="text-ink">{produs.denumire}</span>
-            {poateEdita && (
+            {(
               <button
                 type="button"
                 onClick={() => setProdus(null)}
@@ -205,7 +202,7 @@ export function LaComanda({ model, poateEdita }: { model: ModelLaComanda; poateE
         </p>
       </div>
 
-      {poateEdita && (
+      {(
         <button type="submit" disabled={salveaza.isPending} className="buton buton-primar">
           {salveaza.isPending ? 'Se salvează…' : 'Salvează intervalul'}
         </button>
@@ -222,7 +219,6 @@ function Axa({
   max,
   setMin,
   setMax,
-  dezactivat,
   optional,
 }: {
   eticheta: string
@@ -230,7 +226,6 @@ function Axa({
   max: string
   setMin: (v: string) => void
   setMax: (v: string) => void
-  dezactivat: boolean
   optional?: boolean
 }) {
   return (
@@ -243,7 +238,6 @@ function Axa({
         <input
           value={min}
           inputMode="numeric"
-          disabled={dezactivat}
           onChange={(e) => setMin(e.target.value)}
           className="camp w-24 text-right tabular-nums"
           aria-label={`${eticheta} minimă`}
@@ -252,7 +246,6 @@ function Axa({
         <input
           value={max}
           inputMode="numeric"
-          disabled={dezactivat}
           onChange={(e) => setMax(e.target.value)}
           className="camp w-24 text-right tabular-nums"
           aria-label={`${eticheta} maximă`}

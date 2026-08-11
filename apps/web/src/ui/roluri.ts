@@ -8,9 +8,15 @@ export const ETICHETE_ROL: Record<RolValidat, string> = {
   contabil: 'Contabil',
 }
 
+/**
+ * The role no longer decides what someone may do with recipes, bons or the
+ * catalogue — everyone signed in does all of it. It decides one thing: who may
+ * invite and deactivate people. The labels stay because a list of colleagues is
+ * easier to read when it says what each of them is here for.
+ */
 export const DESCRIERI_ROL: Record<RolValidat, string> = {
-  admin: 'Tot, inclusiv utilizatorii și aprobarea rețetelor.',
-  tehnolog: 'Modele, rețete și nomenclator. Nu emite bonuri.',
-  operator: 'Emite bonuri de producție și exportă pentru SAGA.',
-  contabil: 'Vede rapoartele și exportă. Nu emite bonuri.',
+  admin: 'Tot, plus invitarea și dezactivarea conturilor.',
+  tehnolog: 'Tot, în afară de conturi.',
+  operator: 'Tot, în afară de conturi.',
+  contabil: 'Tot, în afară de conturi.',
 }
