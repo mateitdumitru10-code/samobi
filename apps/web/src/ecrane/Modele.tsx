@@ -44,6 +44,8 @@ function mm(valoare: string | null): string {
 export function Modele() {
   const [selectat, setSelectat] = useState<string | null>(null)
   const [cauta, setCauta] = useState('')
+  const [familie, setFamilie] = useState<string | null>(null)
+  const [formularDeschis, setFormularDeschis] = useState(false)
   // Raised by the recipe editor. Switching models unmounts it, and forty
   // transcribed lines used to go with it without a word.
   const [areModificari, setAreModificari] = useState(false)
@@ -69,95 +71,139 @@ export function Modele() {
     setSelectat(id)
   }
 
-  const filtrate = (modele.data ?? []).filter((m) => {
+  const toate = modele.data ?? []
+
+  const familii = [...new Set(toate.map((m) => m.familie))]
+    .map((nume) => ({ nume, n: toate.filter((m) => m.familie === nume).length }))
+    .sort((a, b) => b.n - a.n)
+
+  const filtrate = toate.filter((m) => {
     const text = cauta.trim().toLowerCase()
-    return text === '' || m.denumire.toLowerCase().includes(text) || m.cod.toLowerCase().includes(text)
+    const potriveste =
+      text === '' || m.denumire.toLowerCase().includes(text) || m.cod.toLowerCase().includes(text)
+    return potriveste && (familie === null || m.familie === familie)
   })
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-wrap gap-6">
-        <div className="w-full space-y-3 lg:max-w-xs">
-          <FormularModel />
-
+    /*
+     * Two panes, each scrolling on its own, instead of one page that grows with
+     * ninety-eight models on top of a forty-line recipe. Picking the next model
+     * used to mean scrolling back up past the whole grid.
+     */
+    <section className="flex flex-col gap-4 lg:h-[calc(100vh-9.5rem)] lg:min-h-[34rem] lg:flex-row">
+      <div className="flex w-full shrink-0 flex-col gap-2 lg:w-72">
+        <div className="flex gap-2">
           <input
             value={cauta}
             onChange={(e) => setCauta(e.target.value)}
             placeholder="Caută model…"
             aria-label="Caută model"
-            className="camp"
+            className="camp camp-mic"
           />
-
-          <div className="overflow-hidden rounded-lg border border-line bg-surface">
-            {modele.isLoading && (
-              <div className="space-y-2 p-4">
-                <Schelet className="h-4 w-40" />
-                <Schelet className="h-4 w-32" />
-                <Schelet className="h-4 w-36" />
-              </div>
-            )}
-
-            {modele.isError && (
-              <div className="p-3">
-                <BannerEroare
-                  eroare={modele.error}
-                  titlu="Modelele nu s-au putut încărca."
-                  onReincearca={() => void modele.refetch()}
-                />
-              </div>
-            )}
-
-            <ul className="divide-y divide-line">
-              {filtrate.map((m) => (
-                <li key={m.id}>
-                  <button
-                    type="button"
-                    onClick={() => alege(m.id)}
-                    aria-current={selectat === m.id ? 'true' : undefined}
-                    className={
-                      selectat === m.id
-                        ? 'w-full border-l-2 border-brand bg-brand-subtle px-4 py-3 text-left'
-                        : 'w-full border-l-2 border-transparent px-4 py-3 text-left hover:bg-surface-page'
-                    }
-                  >
-                    <span className="block text-sm font-medium text-ink">{m.denumire}</span>
-                    <span className="block font-mono text-xs text-ink-muted">{m.cod}</span>
-                    <span className="mt-1 block text-xs text-ink-muted">
-                      {m.familie} · {m.nrDimensiuni} dimensiuni
-                      {m.nrRetete === 0 && <span className="text-atentie"> · fără rețetă</span>}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            {!modele.isLoading && !modele.isError && filtrate.length === 0 && (
-              <Gol
-                titlu={cauta === '' ? 'Niciun model încă' : 'Niciun model găsit'}
-                indiciu={
-                  cauta === '' ? 'Începe cu unul, în formularul de deasupra.' : `Nimic pentru „${cauta}".`
-                }
-              />
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setFormularDeschis((d) => !d)}
+            aria-expanded={formularDeschis}
+            title="Model nou"
+            className="buton buton-secundar buton-mic shrink-0"
+          >
+            {formularDeschis ? 'Renunță' : '+ Model'}
+          </button>
         </div>
 
-        <div className="min-w-0 flex-1">
-          {selectat === null ? (
+        {formularDeschis && <FormularModel onGata={() => setFormularDeschis(false)} />}
+
+        <div className="flex flex-wrap gap-1">
+          {familii.map((f) => (
+            <button
+              key={f.nume}
+              type="button"
+              onClick={() => setFamilie((curenta) => (curenta === f.nume ? null : f.nume))}
+              aria-pressed={familie === f.nume}
+              className={`insigna ${
+                familie === f.nume
+                  ? 'border-brand bg-brand text-white'
+                  : 'border-line-strong bg-surface text-ink-secondary hover:bg-surface-sunken'
+              }`}
+            >
+              {f.nume} <span className={familie === f.nume ? '' : 'text-ink-muted'}>{f.n}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="max-h-72 min-h-0 flex-1 overflow-y-auto rounded-lg border border-line bg-surface lg:max-h-none">
+          {modele.isLoading && (
+            <div className="space-y-2 p-4">
+              <Schelet className="h-4 w-40" />
+              <Schelet className="h-4 w-32" />
+              <Schelet className="h-4 w-36" />
+            </div>
+          )}
+
+          {modele.isError && (
+            <div className="p-3">
+              <BannerEroare
+                eroare={modele.error}
+                titlu="Modelele nu s-au putut încărca."
+                onReincearca={() => void modele.refetch()}
+              />
+            </div>
+          )}
+
+          <ul className="divide-y divide-line">
+            {filtrate.map((m) => (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  onClick={() => alege(m.id)}
+                  aria-current={selectat === m.id ? 'true' : undefined}
+                  title={`${m.cod} · ${m.familie}`}
+                  className={
+                    selectat === m.id
+                      ? 'flex w-full items-center gap-2 border-l-2 border-brand bg-brand-subtle px-3 py-2 text-left'
+                      : 'flex w-full items-center gap-2 border-l-2 border-transparent px-3 py-2 text-left hover:bg-surface-page'
+                  }
+                >
+                  {/* One line per model: the code and the family are on the row
+                      that is selected anyway, and three lines × 98 models is the
+                      scroll this screen was drowning in. */}
+                  <span className="truncate text-sm text-ink">{m.denumire}</span>
+                  {m.nrRetete === 0 && (
+                    <span className="ml-auto shrink-0 text-xs text-atentie">fără rețetă</span>
+                  )}
+                  {m.nrDimensiuni === 0 && (
+                    <span className="ml-auto shrink-0 text-xs text-atentie">fără dimensiune</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {!modele.isLoading && !modele.isError && filtrate.length === 0 && (
             <Gol
-              titlu="Alege un model din stânga"
-              indiciu="Ca să-i vezi dimensiunile, rețeta și versiunile."
+              titlu="Niciun model găsit"
+              indiciu={cauta === '' ? 'Adaugă unul cu „+ Model".' : `Nimic pentru „${cauta}".`}
             />
-          ) : (
-            <DetaliuModel modelId={selectat} onModificat={onModificat} />
           )}
         </div>
+
+        <p className="text-xs text-ink-muted">
+          {filtrate.length} din {modele.data?.length ?? 0} modele
+        </p>
+      </div>
+
+      <div className="min-w-0 flex-1 lg:overflow-y-auto lg:pr-1">
+        {selectat === null ? (
+          <Gol titlu="Alege un model din stânga" indiciu="Ca să-i vezi dimensiunile și rețeta." />
+        ) : (
+          <DetaliuModel modelId={selectat} onModificat={onModificat} />
+        )}
       </div>
     </section>
   )
 }
 
-function FormularModel() {
+function FormularModel({ onGata }: { onGata: () => void }) {
   const queryClient = useQueryClient()
   const notificari = useNotificari()
   const [cod, setCod] = useState('')
@@ -170,6 +216,7 @@ function FormularModel() {
       notificari.succes(`Modelul ${cod} a fost creat.`)
       setCod('')
       setDenumire('')
+      onGata()
       await queryClient.invalidateQueries({ queryKey: ['modele'] })
     },
     onError: (e) => notificari.eroare(mesajEroare(e)),
@@ -271,18 +318,16 @@ function DetaliuModel({
   if (detaliu.data === undefined) return null
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline gap-x-3">
         <h2 className="text-lg font-semibold text-ink">{detaliu.data.denumire}</h2>
-        <p className="font-mono text-xs text-ink-muted">{detaliu.data.cod}</p>
+        <span className="font-mono text-xs text-ink-muted">{detaliu.data.cod}</span>
+        <span className="text-xs text-ink-muted">{detaliu.data.familie}</span>
       </div>
 
       <Dimensiuni modelId={modelId} dimensiuni={detaliu.data.dimensiuni} />
 
-      <div>
-        <h3 className="mb-3 text-sm font-semibold text-ink">Rețetă</h3>
-        <RetetaEditor modelId={modelId} onModificat={onModificat} />
-      </div>
+      <RetetaEditor modelId={modelId} onModificat={onModificat} />
     </div>
   )
 }
@@ -329,26 +374,50 @@ function Dimensiuni({ modelId, dimensiuni }: { modelId: string; dimensiuni: Dime
   }
 
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-ink">Dimensiuni</h3>
-          <p className="text-sm text-ink-muted">
-            Bonurile se emit pe dimensiunile de aici. Pentru o mărime nouă, adaug-o —
-            rețeta rămâne aceeași.
-          </p>
-        </div>
+    <div className="rounded-lg border border-line bg-surface px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <span className="text-xs font-medium uppercase text-ink-muted">Dimensiuni</span>
+
+        {/* Ninety-six of ninety-eight models have exactly one. A table with a
+            header row, for one row of data, above the thing actually being
+            edited. */}
+        {dimensiuni.map((d) => (
+          <span key={d.id} className="flex items-center gap-2">
+            <span className="font-medium text-ink">{d.cod}</span>
+            <span className="tabular-nums text-ink-secondary">
+              {mm(d.lungime)}×{mm(d.latime)}
+              {d.inaltime !== null && `×${mm(d.inaltime)}`}
+            </span>
+            {d.codSagaProdus === null ? (
+              <Insigna fel="atentie">fără produs finit — bonul nu se poate emite</Insigna>
+            ) : (
+              <span
+                className="font-mono text-xs text-ink-muted"
+                title={d.denumireProdus ?? undefined}
+              >
+                {d.codSagaProdus}
+              </span>
+            )}
+          </span>
+        ))}
+
+        {dimensiuni.length === 0 && (
+          <span className="text-atentie">
+            niciuna — rețeta are nevoie de cel puțin una ca să se emită bonuri
+          </span>
+        )}
+
         <button
           type="button"
           onClick={() => setDeschis((d) => !d)}
-          className="buton buton-secundar buton-mic"
+          className="ml-auto text-xs text-brand underline underline-offset-2"
         >
-          {deschis ? 'Renunță' : 'Adaugă dimensiune'}
+          {deschis ? 'renunță' : '+ adaugă'}
         </button>
       </div>
 
       {deschis && (
-        <form onSubmit={trimite} className="card mb-3 flex flex-wrap items-end gap-3 p-4">
+        <form onSubmit={trimite} className="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3">
           <Camp eticheta="Cod" valoare={cod} set={setCod} latime="w-32" placeholder="2000x1600" />
           <Camp
             eticheta="Lungime (mm)"
@@ -402,56 +471,6 @@ function Dimensiuni({ modelId, dimensiuni }: { modelId: string; dimensiuni: Dime
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-        <table className="w-full text-sm" aria-label="Dimensiunile modelului">
-          <thead className="bg-surface-sunken text-left text-xs uppercase text-ink-muted">
-            <tr>
-              <th scope="col" className="px-4 py-2 font-medium">
-                Cod
-              </th>
-              <th scope="col" className="px-4 py-2 font-medium">
-                L × l × H (mm)
-              </th>
-              <th scope="col" className="px-4 py-2 font-medium">
-                Produs finit în SAGA
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {dimensiuni.map((d) => (
-              <tr key={d.id} className="border-t border-line hover:bg-surface-page">
-                <td className="px-4 py-2 font-medium">{d.cod}</td>
-                <td className="px-4 py-2 tabular-nums text-ink-secondary">
-                  {mm(d.lungime)} × {mm(d.latime)}
-                  {d.inaltime !== null && ` × ${mm(d.inaltime)}`}
-                </td>
-                <td className="px-4 py-2 text-ink-secondary">
-                  {d.codSagaProdus === null ? (
-                    <Insigna fel="atentie">nelegat — bonul nu se poate emite</Insigna>
-                  ) : (
-                    <>
-                      <span className="font-mono text-xs">{d.codSagaProdus}</span>
-                      {d.denumireProdus !== null && (
-                        <span className="ml-2 text-ink-muted">{d.denumireProdus}</span>
-                      )}
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {dimensiuni.length === 0 && (
-              <tr>
-                <td colSpan={3}>
-                  <Gol
-                    titlu="Nicio dimensiune"
-                    indiciu="Rețeta are nevoie de cel puțin una: formulele se evaluează pe L, l și H."
-                  />
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
     </div>
   )
 }

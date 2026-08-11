@@ -192,8 +192,31 @@ function campActiv(modCalcul: string, camp: 'cantitateFixa' | 'formula'): boolea
   return modCalcul === 'formula'
 }
 
-/** Columns before the per-dimension ones, so arrow keys cross the whole row. */
-const COLOANE_FIXE = 7
+/**
+ * Which columns are on screen.
+ *
+ * Every one of the 3864 lines in the live data is `fixa`, at 0% waste, with no
+ * per-dimension value and no override, and 96 of 98 models have a single size.
+ * So six of the eleven columns were always empty, and reading a recipe meant
+ * scanning past them — sideways, because eleven columns do not fit.
+ *
+ * The simple grid is what the data actually contains. The rest is one click
+ * away and comes on by itself the moment a recipe has something to put in it,
+ * so nothing is ever hidden that carries a value.
+ */
+const CHEIE_AVANSAT = 'samobi:reteta-avansat'
+
+function areNevoieDeAvansat(reteta: Reteta | undefined): boolean {
+  if (reteta === undefined) return false
+  if (reteta.dimensiuni.length > 1) return true
+  return reteta.linii.some(
+    (l) =>
+      l.modCalcul !== 'fixa' ||
+      Number(l.procentPierderi) !== 0 ||
+      l.grup !== 'NECLASIFICAT' ||
+      l.valoriPeDimensiuni.length > 0,
+  )
+}
 
 export function RetetaEditor({
   modelId,
@@ -214,6 +237,7 @@ export function RetetaEditor({
   const [dimensiunePreview, setDimensiunePreview] = useState('')
   const [linieSelectata, setLinieSelectata] = useState<string | null>(null)
   const [codRau, setCodRau] = useState<Set<string>>(new Set())
+  const [avansat, setAvansat] = useState(() => localStorage.getItem(CHEIE_AVANSAT) === 'true')
 
   const reteta = useQuery({
     queryKey: ['reteta', modelId],
@@ -245,6 +269,8 @@ export function RetetaEditor({
     }
     setLinii(dateReteta.linii.map(dinServer))
     setLockVersion(dateReteta.lockVersion)
+    // Turned on, never off: someone who opened the extra columns keeps them.
+    if (areNevoieDeAvansat(dateReteta)) setAvansat(true)
     setConflict(null)
     setServerulSASchimbat(false)
     setDimensiunePreview((curent) => (curent === '' ? (dateReteta.dimensiuni[0]?.id ?? '') : curent))
@@ -496,6 +522,26 @@ export function RetetaEditor({
   )
 
   const overrideFaraMotiv = overrideuri.some((o) => o.valoare.motiv.trim() === '')
+
+  /**
+   * The order of the editable cells, so the arrows cross exactly what is on
+   * screen. Indices are derived from this list rather than written down: a
+   * hidden column with a fixed index is a hole the keyboard falls into.
+   */
+  // In render order, so ArrowRight goes to the cell that is visually next.
+  const coloane = avansat
+    ? [
+        'grup',
+        'material',
+        'mod',
+        'cantitate',
+        'um',
+        'formula',
+        'pierderi',
+        ...dimensiuni.map((d) => `dim:${d.id}`),
+      ]
+    : ['material', 'cantitate', 'um']
+  const idx = (nume: string) => coloane.indexOf(nume)
   // Recipes have no approved state: anyone signed in edits them, always.
   const blocat = false
   const dimAleasa = dimensiuni.find((d) => d.id === dimensiunePreview)
@@ -569,58 +615,77 @@ export function RetetaEditor({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          {dimensiuni.length > 0 && (
-            <label className="flex items-center gap-2 text-ink-secondary">
-              Previzualizare pentru
-              <select
-                value={dimensiunePreview}
-                onChange={(e) => setDimensiunePreview(e.target.value)}
-                className="camp camp-mic w-56"
-              >
-                {dimensiuni.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.cod} ({d.lungime}×{d.latime}
-                    {d.inaltime === null ? '' : `×${d.inaltime}`})
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {modificat && <Insigna fel="atentie">modificări nesalvate</Insigna>}
-        </div>
+      {/*
+        Sticky, because a recipe is forty lines and the save button used to be
+        wherever the page had been scrolled away from.
+      */}
+      <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-surface-page/95 px-1 py-2 backdrop-blur">
+        <span className="text-sm text-ink-secondary">
+          <strong className="text-ink">{linii.length}</strong> linii
+        </span>
+        <TotalReteta linii={linii} dimensiuni={dimensiuni} dimensiuneId={dimensiunePreview} />
+        {modificat && <Insigna fel="atentie">nesalvat</Insigna>}
 
-        {!blocat && (
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={adauga} className="buton buton-secundar buton-mic">
-              Adaugă linie
-            </button>
-            <button
-              type="button"
-              disabled={!modificat || salveaza.isPending}
-              onClick={() => {
-                if (overrideFaraMotiv) {
-                  notificari.eroare(
-                    'Completează motivul pentru valorile fixate manual, în panoul de sub grilă.',
-                  )
-                  document.getElementById('motive-override')?.scrollIntoView({ behavior: 'smooth' })
-                  document.querySelector<HTMLInputElement>('[data-motiv-gol="true"]')?.focus()
-                  return
-                }
-                salveaza.mutate(false)
-              }}
-              className="buton buton-primar"
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {avansat && dimensiuni.length > 1 && (
+            <select
+              value={dimensiunePreview}
+              aria-label="Dimensiunea pentru care se calculează"
+              onChange={(e) => setDimensiunePreview(e.target.value)}
+              className="camp camp-mic w-40"
             >
-              {salveaza.isPending ? 'Se salvează…' : 'Salvează rețeta'}
-            </button>
-          </div>
-        )}
+              {dimensiuni.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.cod}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const nou = !avansat
+              setAvansat(nou)
+              localStorage.setItem(CHEIE_AVANSAT, String(nou))
+            }}
+            aria-pressed={avansat}
+            className="buton buton-discret buton-mic"
+          >
+            {avansat ? 'Ascunde coloanele avansate' : 'Coloane avansate'}
+          </button>
+          {!blocat && (
+            <>
+              <button type="button" onClick={adauga} className="buton buton-secundar buton-mic">
+                Adaugă linie
+              </button>
+              <button
+                type="button"
+                disabled={!modificat || salveaza.isPending}
+                onClick={() => {
+                  if (overrideFaraMotiv) {
+                    notificari.eroare(
+                      'Completează motivul pentru valorile fixate manual, în panoul de sub grilă.',
+                    )
+                    document
+                      .getElementById('motive-override')
+                      ?.scrollIntoView({ behavior: 'smooth' })
+                    document.querySelector<HTMLInputElement>('[data-motiv-gol="true"]')?.focus()
+                    return
+                  }
+                  salveaza.mutate(false)
+                }}
+                className="buton buton-primar buton-mic"
+              >
+                {salveaza.isPending ? 'Se salvează…' : 'Salvează'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div
         ref={containerRef}
-        className="max-h-[70vh] overflow-auto rounded-lg border border-line bg-surface"
+        className="max-h-[62vh] overflow-auto rounded-lg border border-line bg-surface"
       >
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-surface-sunken text-left text-xs uppercase text-ink-muted">
@@ -628,38 +693,46 @@ export function RetetaEditor({
               <th scope="col" className="px-2 py-2 font-medium">
                 #
               </th>
-              <th scope="col" className="px-2 py-2 font-medium">
-                Grup
-              </th>
+              {avansat && (
+                <th scope="col" className="px-2 py-2 font-medium">
+                  Grup
+                </th>
+              )}
               <th scope="col" className="px-2 py-2 font-medium">
                 Material
+              </th>
+              {avansat && (
+                <th scope="col" className="px-2 py-2 font-medium">
+                  Mod
+                </th>
+              )}
+              <th scope="col" className="px-2 py-2 text-right font-medium">
+                Cantitate
               </th>
               <th scope="col" className="px-2 py-2 font-medium">
                 UM
               </th>
-              <th scope="col" className="px-2 py-2 font-medium">
-                Mod
-              </th>
-              <th scope="col" className="px-2 py-2 font-medium">
-                Cantitate
-              </th>
-              <th scope="col" className="px-2 py-2 font-medium">
-                Formulă
-              </th>
-              <th scope="col" className="px-2 py-2 font-medium">
-                Pierderi %
-              </th>
-              <th scope="col" className="px-2 py-2 text-right font-medium">
-                Preț (lei)
-              </th>
-              <th scope="col" className="px-2 py-2 text-right font-medium">
-                Valoare{dimAleasa === undefined ? '' : ` · ${dimAleasa.cod}`}
-              </th>
-              {dimensiuni.map((d) => (
-                <th key={d.id} scope="col" className="px-2 py-2 font-medium">
-                  {d.cod}
-                </th>
-              ))}
+              {avansat && (
+                <>
+                  <th scope="col" className="px-2 py-2 font-medium">
+                    Formulă
+                  </th>
+                  <th scope="col" className="px-2 py-2 font-medium">
+                    Pierderi %
+                  </th>
+                  <th scope="col" className="px-2 py-2 text-right font-medium">
+                    Preț (lei)
+                  </th>
+                  <th scope="col" className="px-2 py-2 text-right font-medium">
+                    Valoare{dimAleasa === undefined ? '' : ` · ${dimAleasa.cod}`}
+                  </th>
+                  {dimensiuni.map((d) => (
+                    <th key={d.id} scope="col" className="px-2 py-2 font-medium">
+                      {d.cod}
+                    </th>
+                  ))}
+                </>
+              )}
               <th scope="col" className="px-2 py-2" />
             </tr>
           </thead>
@@ -686,23 +759,25 @@ export function RetetaEditor({
                 >
                   <td className="px-2 py-1 text-ink-disabled tabular-nums">{linie.nrLinie}</td>
 
-                  <td className="px-1 py-1">
-                    <select
-                      value={linie.grup}
-                      disabled={blocat}
-                      onChange={(e) => schimba(linie.cheie, 'grup', e.target.value)}
-                      onKeyDown={navigheaza}
-                      {...coordonate(rand, 0)}
-                      {...ancora}
-                      className="w-32 rounded border border-transparent px-1 py-1 hover:border-line-strong"
-                    >
-                      {GRUPURI.map((g) => (
-                        <option key={g} value={g}>
-                          {g}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+                  {avansat && (
+                    <td className="px-1 py-1">
+                      <select
+                        value={linie.grup}
+                        disabled={blocat}
+                        onChange={(e) => schimba(linie.cheie, 'grup', e.target.value)}
+                        onKeyDown={navigheaza}
+                        {...coordonate(rand, idx('grup'))}
+                        {...ancora}
+                        className="w-32 rounded border border-transparent px-1 py-1 hover:border-line-strong"
+                      >
+                        {GRUPURI.map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
 
                   <td className="px-1 py-1">
                     <div className="flex items-center gap-1">
@@ -715,7 +790,7 @@ export function RetetaEditor({
                             schimba(linie.cheie, 'categorieVariabila', e.target.value)
                           }
                           onKeyDown={navigheaza}
-                          {...coordonate(rand, 1)}
+                          {...coordonate(rand, idx('material'))}
                           {...ancora}
                           className="w-40 rounded border border-transparent px-1 py-1 font-mono text-xs hover:border-line-strong"
                         />
@@ -724,13 +799,20 @@ export function RetetaEditor({
                       ) : (
                         <CautaArticol
                           umAsteptat={linie.um}
-                          clasa={`w-40 rounded border px-1 py-1 font-mono text-xs ${
+                          // The chosen material *is* the placeholder — the field
+                          // clears after a pick — so it has to read as content
+                          // rather than as an empty box.
+                          clasa={`w-72 rounded border px-1 py-1 text-xs ${
+                            linie.denumireMaterial === null ? '' : 'placeholder:text-ink'
+                          } ${
                             codInexistent ? 'border-danger' : 'border-transparent hover:border-line-strong'
                           }`}
-                          placeholder={linie.codSaga === '' ? 'caută material…' : linie.codSaga}
+                          placeholder={
+                            linie.denumireMaterial ?? (linie.codSaga === '' ? 'caută material…' : linie.codSaga)
+                          }
                           onAlege={(a) => alegeArticol(linie.cheie, a)}
                           onTastaLibera={navigheaza}
-                          {...coordonate(rand, 1)}
+                          {...coordonate(rand, idx('material'))}
                           {...ancora}
                         />
                       )}
@@ -748,59 +830,41 @@ export function RetetaEditor({
                       >
                         var
                       </button>
+                      {/* On the row, not under it. The name is in the field and
+                          the code beside it, so a line stays one line — forty
+                          two-line rows is twice the grid to scroll through. */}
+                      {!linie.esteVariabil && linie.codSaga !== '' && !codInexistent && (
+                        <span className="font-mono text-[11px] text-ink-muted">
+                          {linie.codSaga}
+                        </span>
+                      )}
                     </div>
-                    {!linie.esteVariabil && (
-                      <p className="px-1 text-[11px] text-ink-muted">
-                        {codInexistent ? (
-                          <span className="text-danger">
-                            {linie.codSaga} nu există în nomenclator
-                          </span>
-                        ) : (
-                          <>
-                            {linie.codSaga !== '' && (
-                              <span className="font-mono">{linie.codSaga} </span>
-                            )}
-                            {linie.denumireMaterial}
-                          </>
-                        )}
+                    {codInexistent && (
+                      <p className="px-1 text-[11px] text-danger">
+                        {linie.codSaga} nu există în nomenclator
                       </p>
                     )}
                   </td>
 
-                  <td className="px-1 py-1">
-                    <input
-                      value={linie.um}
-                      disabled={blocat}
-                      onChange={(e) => schimba(linie.cheie, 'um', e.target.value)}
-                      onKeyDown={navigheaza}
-                      {...coordonate(rand, 2)}
-                      {...ancora}
-                      title={umDiferit ? `În SAGA articolul e în ${linie.umSaga}` : undefined}
-                      className={`w-16 rounded border px-1 py-1 ${
-                        umDiferit
-                          ? 'border-atentie-border bg-atentie-bg'
-                          : 'border-transparent hover:border-line-strong'
-                      }`}
-                    />
-                  </td>
-
-                  <td className="px-1 py-1">
-                    <select
-                      value={linie.modCalcul}
-                      disabled={blocat}
-                      onChange={(e) => schimba(linie.cheie, 'modCalcul', e.target.value)}
-                      onKeyDown={navigheaza}
-                      {...coordonate(rand, 3)}
-                      {...ancora}
-                      className="w-24 rounded border border-transparent px-1 py-1 hover:border-line-strong"
-                    >
-                      {MODURI_CALCUL.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+                  {avansat && (
+                    <td className="px-1 py-1">
+                      <select
+                        value={linie.modCalcul}
+                        disabled={blocat}
+                        onChange={(e) => schimba(linie.cheie, 'modCalcul', e.target.value)}
+                        onKeyDown={navigheaza}
+                        {...coordonate(rand, idx('mod'))}
+                        {...ancora}
+                        className="w-24 rounded border border-transparent px-1 py-1 hover:border-line-strong"
+                      >
+                        {MODURI_CALCUL.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
 
                   <td className="px-1 py-1">
                     <input
@@ -808,7 +872,7 @@ export function RetetaEditor({
                       disabled={blocat || !campActiv(linie.modCalcul, 'cantitateFixa')}
                       onChange={(e) => schimba(linie.cheie, 'cantitateFixa', e.target.value)}
                       onKeyDown={navigheaza}
-                      {...coordonate(rand, 4)}
+                      {...coordonate(rand, idx('cantitate'))}
                       {...ancora}
                       title={
                         esteNumarInvalid(linie.cantitateFixa) ? 'Un număr, ex. 0,5' : undefined
@@ -823,85 +887,106 @@ export function RetetaEditor({
 
                   <td className="px-1 py-1">
                     <input
-                      value={campActiv(linie.modCalcul, 'formula') ? linie.formula : ''}
-                      disabled={blocat || !campActiv(linie.modCalcul, 'formula')}
-                      placeholder="2*(L+l)/1000"
-                      onChange={(e) => schimba(linie.cheie, 'formula', e.target.value)}
-                      onKeyDown={navigheaza}
-                      {...coordonate(rand, 5)}
-                      {...ancora}
-                      className="w-52 rounded border border-transparent px-1 py-1 font-mono text-xs hover:border-line-strong disabled:bg-surface-sunken disabled:text-ink-disabled"
-                    />
-                  </td>
-
-                  <td className="px-1 py-1">
-                    <input
-                      value={linie.procentPierderi}
+                      value={linie.um}
                       disabled={blocat}
-                      onChange={(e) => schimba(linie.cheie, 'procentPierderi', e.target.value)}
+                      onChange={(e) => schimba(linie.cheie, 'um', e.target.value)}
                       onKeyDown={navigheaza}
-                      {...coordonate(rand, 6)}
+                      {...coordonate(rand, idx('um'))}
                       {...ancora}
-                      className={`w-16 rounded border px-1 py-1 text-right tabular-nums ${
-                        esteNumarInvalid(linie.procentPierderi)
-                          ? 'border-danger'
+                      title={umDiferit ? `În SAGA articolul e în ${linie.umSaga}` : undefined}
+                      className={`w-16 rounded border px-1 py-1 ${
+                        umDiferit
+                          ? 'border-atentie-border bg-atentie-bg'
                           : 'border-transparent hover:border-line-strong'
                       }`}
                     />
                   </td>
 
-                  <td className="px-2 py-1 text-right tabular-nums text-ink-muted">
-                    {linie.pret === null ? (
-                      <span className="text-xs text-atentie">fără preț</span>
-                    ) : (
-                      <span
-                        title={
-                          linie.sursaPret === 'consum'
-                            ? `din ultimul consum, ${linie.pretLa ?? ''}`
-                            : 'preț mediu din nomenclator'
-                        }
-                        className={linie.sursaPret === 'consum' ? 'text-info' : ''}
-                      >
-                        {lei(linie.pret)}
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="px-2 py-1 text-right font-medium tabular-nums">
-                    {(() => {
-                      const cantitate = cantitatePeDimensiune(linie, dimensiunePreview)
-                      if (linie.pret === null || cantitate === null) return '—'
-                      const pierderi = numar(linie.procentPierderi) ?? 0
-                      return lei(cantitate * (1 + pierderi / 100) * linie.pret)
-                    })()}
-                  </td>
-
-                  {dimensiuni.map((d, index) => {
-                    const valoare = linie.valori[d.id]
-                    const esteOverride = valoare?.esteOverride === true
-                    return (
-                      <td key={d.id} className="px-1 py-1">
+                  {avansat && (
+                    <>
+                      <td className="px-1 py-1">
                         <input
-                          value={valoare?.cantitate ?? ''}
-                          disabled={blocat}
-                          onChange={(e) => schimbaValoare(linie.cheie, d.id, e.target.value)}
+                          value={campActiv(linie.modCalcul, 'formula') ? linie.formula : ''}
+                          disabled={blocat || !campActiv(linie.modCalcul, 'formula')}
+                          placeholder="2*(L+l)/1000"
+                          onChange={(e) => schimba(linie.cheie, 'formula', e.target.value)}
                           onKeyDown={navigheaza}
-                          {...coordonate(rand, COLOANE_FIXE + index)}
+                          {...coordonate(rand, idx('formula'))}
                           {...ancora}
-                          title={
-                            linie.modCalcul === 'tabel'
-                              ? 'Cantitatea pe această dimensiune'
-                              : 'O valoare aici suprascrie calculul — are nevoie de motiv'
-                          }
-                          className={
-                            esteOverride
-                              ? 'w-24 rounded border border-atentie-border bg-atentie-bg px-1 py-1 text-right font-medium tabular-nums text-atentie'
-                              : 'w-24 rounded border border-transparent px-1 py-1 text-right tabular-nums hover:border-line-strong'
-                          }
+                          className="w-52 rounded border border-transparent px-1 py-1 font-mono text-xs hover:border-line-strong disabled:bg-surface-sunken disabled:text-ink-disabled"
                         />
                       </td>
-                    )
-                  })}
+
+                      <td className="px-1 py-1">
+                        <input
+                          value={linie.procentPierderi}
+                          disabled={blocat}
+                          onChange={(e) => schimba(linie.cheie, 'procentPierderi', e.target.value)}
+                          onKeyDown={navigheaza}
+                          {...coordonate(rand, idx('pierderi'))}
+                          {...ancora}
+                          className={`w-16 rounded border px-1 py-1 text-right tabular-nums ${
+                            esteNumarInvalid(linie.procentPierderi)
+                              ? 'border-danger'
+                              : 'border-transparent hover:border-line-strong'
+                          }`}
+                        />
+                      </td>
+
+                      <td className="px-2 py-1 text-right tabular-nums text-ink-muted">
+                        {linie.pret === null ? (
+                          <span className="text-xs text-atentie">fără preț</span>
+                        ) : (
+                          <span
+                            title={
+                              linie.sursaPret === 'consum'
+                                ? `din ultimul consum, ${linie.pretLa ?? ''}`
+                                : 'preț mediu din nomenclator'
+                            }
+                            className={linie.sursaPret === 'consum' ? 'text-info' : ''}
+                          >
+                            {lei(linie.pret)}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-2 py-1 text-right font-medium tabular-nums">
+                        {(() => {
+                          const cantitate = cantitatePeDimensiune(linie, dimensiunePreview)
+                          if (linie.pret === null || cantitate === null) return '—'
+                          const pierderi = numar(linie.procentPierderi) ?? 0
+                          return lei(cantitate * (1 + pierderi / 100) * linie.pret)
+                        })()}
+                      </td>
+
+                      {dimensiuni.map((d) => {
+                        const valoare = linie.valori[d.id]
+                        const esteOverride = valoare?.esteOverride === true
+                        return (
+                          <td key={d.id} className="px-1 py-1">
+                            <input
+                              value={valoare?.cantitate ?? ''}
+                              disabled={blocat}
+                              onChange={(e) => schimbaValoare(linie.cheie, d.id, e.target.value)}
+                              onKeyDown={navigheaza}
+                              {...coordonate(rand, idx(`dim:${d.id}`))}
+                              {...ancora}
+                              title={
+                                linie.modCalcul === 'tabel'
+                                  ? 'Cantitatea pe această dimensiune'
+                                  : 'O valoare aici suprascrie calculul — are nevoie de motiv'
+                              }
+                              className={
+                                esteOverride
+                                  ? 'w-24 rounded border border-atentie-border bg-atentie-bg px-1 py-1 text-right font-medium tabular-nums text-atentie'
+                                  : 'w-24 rounded border border-transparent px-1 py-1 text-right tabular-nums hover:border-line-strong'
+                              }
+                            />
+                          </td>
+                        )
+                      })}
+                    </>
+                  )}
 
                   <td className="px-2 py-1 text-right whitespace-nowrap">
                     {areOverride && <Insigna fel="atentie">fixat</Insigna>}
@@ -952,7 +1037,7 @@ export function RetetaEditor({
 
             {linii.length === 0 && (
               <tr>
-                <td colSpan={11 + dimensiuni.length} className="px-4 py-8 text-center">
+                <td colSpan={coloane.length + 3} className="px-4 py-8 text-center">
                   <p className="text-sm text-ink-secondary">Rețeta nu are linii.</p>
                   {!blocat && (
                     <button type="button" onClick={adauga} className="buton buton-secundar mt-3">
@@ -968,14 +1053,25 @@ export function RetetaEditor({
 
       {!blocat && (
         <p className="text-xs text-ink-muted">
-          Săgeți între celule · Enter rândul următor (pe ultimul rând adaugă unul nou) · Ctrl+D
-          duplică · Alt+↑/↓ mută linia
+          Săgeți între celule · Enter rândul următor (pe ultimul adaugă unul nou) · Ctrl+D duplică ·
+          Alt+↑/↓ mută linia
         </p>
       )}
 
-      <TotalReteta linii={linii} dimensiuni={dimensiuni} dimensiuneId={dimensiunePreview} />
-
-      <ComparatieDimensiuni modelId={modelId} />
+      {/* Below the grid live the things that are usually empty: the reasons a
+          value was pinned, the formula check, the comparison across sizes. All
+          three used to be open at once, which is most of the page's scroll for
+          panels that say nothing on a normal recipe. */}
+      {dimensiuni.length > 1 && (
+        <details className="card p-0">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink">
+            Compară dimensiunile
+          </summary>
+          <div className="border-t border-line p-4">
+            <ComparatieDimensiuni modelId={modelId} />
+          </div>
+        </details>
+      )}
 
       {overrideuri.length > 0 && (
         <div
@@ -1024,6 +1120,7 @@ export function RetetaEditor({
       )}
 
       <VerificareFormula linii={linii} dimensiuneId={dimensiunePreview} />
+
     </div>
   )
 }
@@ -1040,8 +1137,10 @@ function VerificareFormula({ linii, dimensiuneId }: { linii: Linie[]; dimensiune
   if (formule.length === 0) return null
 
   return (
-    <div className="card p-4">
-      <h3 className="text-sm font-semibold text-ink">Verificare formule</h3>
+    <details className="card p-4" open>
+      <summary className="cursor-pointer text-sm font-semibold text-ink">
+        Verificare formule ({formule.length})
+      </summary>
       <p className="mt-1 text-xs text-ink-muted">
         Variabile: <code className="font-mono">L</code> lungime,{' '}
         <code className="font-mono">l</code> lățime, <code className="font-mono">H</code> înălțime,
@@ -1053,7 +1152,7 @@ function VerificareFormula({ linii, dimensiuneId }: { linii: Linie[]; dimensiune
           <RandFormula key={f.nrLinie} {...f} dimensiuneId={dimensiuneId} />
         ))}
       </ul>
-    </div>
+    </details>
   )
 }
 
@@ -1146,22 +1245,20 @@ function TotalReteta({
   }
 
   const dim = dimensiuni.find((d) => d.id === dimensiuneId)
+  const incomplet = faraPret > 0 || cuFormula > 0
 
   return (
-    <div className="card flex flex-wrap items-baseline gap-4 px-4 py-3 text-sm">
-      <span className="text-ink-muted">
-        Cost material pe bucată{dim === undefined ? '' : `, dimensiunea ${dim.cod}`}
-      </span>
-      <span className="text-2xl font-semibold tabular-nums text-ink">
-        {lei(total)} <span className="text-sm font-normal text-ink-muted">lei</span>
-      </span>
-      {(faraPret > 0 || cuFormula > 0) && (
-        <span className="text-xs text-atentie">
-          minim — {faraPret > 0 && `${faraPret} linii fără preț`}
-          {faraPret > 0 && cuFormula > 0 && ', '}
-          {cuFormula > 0 && `${cuFormula} cu formulă, calculate în Rapoarte`}
-        </span>
-      )}
-    </div>
+    <span
+      className="text-sm text-ink-secondary"
+      title={
+        incomplet
+          ? `Minim: ${faraPret} linii fără preț în nomenclator` +
+            (cuFormula > 0 ? `, ${cuFormula} cu formulă` : '')
+          : `Cost material pe bucată${dim === undefined ? '' : `, dimensiunea ${dim.cod}`}`
+      }
+    >
+      <span className="font-semibold tabular-nums text-ink">{lei(total)} lei</span>
+      <span className="text-ink-muted"> / bucată{incomplet ? ' (minim)' : ''}</span>
+    </span>
   )
 }

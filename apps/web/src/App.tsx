@@ -150,7 +150,15 @@ export function App() {
         </div>
       </nav>
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      {/* „Modele și rețete" is a two-pane workbench and wants the whole window;
+          everything else reads better in a column. */}
+      <main
+        className={
+          sectiuneCurenta === 'modele'
+            ? 'px-4 py-4'
+            : 'mx-auto max-w-6xl px-6 py-8'
+        }
+      >
         {sectiuneCurenta === 'utilizatori' && eu.rol === 'admin' && <Conturi utilizator={eu} />}
         {sectiuneCurenta === 'bonuri' && <Bonuri />}
         {sectiuneCurenta === 'modele' && <Modele />}
