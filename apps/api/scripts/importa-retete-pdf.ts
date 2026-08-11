@@ -172,7 +172,11 @@ function liniiPentru(bon: BonPdf) {
     formula: null,
     // The report's quantity is what left the warehouse, waste and all.
     procentPierderi: '0',
-    gestiuneDescarcare: null,
+    // What the report says, not what the catalogue defaults to. Fifteen of
+    // these articles are filed under MATERIALE CONSUMABILE and four under
+    // IMOBILIZARI IN CURS, but every bon this factory issues discharges them
+    // from MATERII PRIME.
+    gestiuneDescarcare: c.gestiune,
     obligatoriu: true,
     observatii:
       `din SAGA, bon ${bon.nrIntern ?? '?'}` + (bon.data === null ? '' : ` din ${bon.data}`),
