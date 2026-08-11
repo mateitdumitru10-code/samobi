@@ -196,7 +196,15 @@ export function Modele() {
         {selectat === null ? (
           <Gol titlu="Alege un model din stânga" indiciu="Ca să-i vezi dimensiunile și rețeta." />
         ) : (
-          <DetaliuModel modelId={selectat} onModificat={onModificat} />
+          /*
+           * Keyed by the model, so switching remounts everything under it.
+           * Without this the pane keeps its state whenever the next model is
+           * already cached — which is the normal case here — and an edited
+           * grid, or a half-typed dimension, ends up pointed at the wrong
+           * model. The recipe editor would then save model A's lines onto
+           * model B, and with equal lock versions it would not even conflict.
+           */
+          <DetaliuModel key={selectat} modelId={selectat} onModificat={onModificat} />
         )}
       </div>
     </section>

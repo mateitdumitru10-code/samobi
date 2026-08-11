@@ -139,7 +139,10 @@ function linieNoua(nrLinie: number): Linie {
   return {
     cheie: `n${contorCheie}`,
     nrLinie,
-    grup: 'STRUCTURA',
+    // Not „STRUCTURA": the group column is hidden by default, and a value
+    // nobody saw would both misdescribe the material and pull the whole recipe
+    // into the advanced view on the next load.
+    grup: 'NECLASIFICAT',
     codSaga: '',
     denumireMaterial: null,
     esteVariabil: false,
@@ -477,10 +480,14 @@ export function RetetaEditor({
 
     notificari.succes(`Linia ${stearsa.nrLinie} — ${stearsa.codSaga || 'fără cod'} ștearsă.`, {
       eticheta: 'Anulează ștergerea',
-      executa: () =>
+      executa: () => {
         setLinii((curente) =>
           renumeroteaza([...curente.slice(0, pozitie), stearsa, ...curente.slice(pozitie)]),
-        ),
+        )
+        // Without this the line comes back on screen with nothing to save, and
+        // the next refetch takes it away again without a word.
+        marcheazaModificat()
+      },
     })
   }
 

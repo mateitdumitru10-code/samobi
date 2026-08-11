@@ -189,7 +189,7 @@ export function AlegeStofe({
         </div>
       )}
 
-      {(populare.data?.stofe.length ?? 0) > 0 && (
+      {(populare.data?.stofe.length ?? 0) > 0 && active.length > 0 && (
         <div className="mt-3">
           <p className="text-xs font-medium text-ink-secondary">Cele mai folosite</p>
           <ul className="mt-1.5 flex flex-wrap gap-1.5">
@@ -197,7 +197,11 @@ export function AlegeStofe({
               <li key={s.codSaga}>
                 <button
                   type="button"
-                  onClick={() => (maiMulte ? onAlegeToate(s) : onAlege(active[0]?.id ?? '', s))}
+                  onClick={() => {
+                    const singura = active[0]
+                    if (maiMulte) onAlegeToate(s)
+                    else if (singura !== undefined) onAlege(singura.id, s)
+                  }}
                   title={`${s.codSaga} · în ${s.folosiri} rețete`}
                   className="insigna border-line-strong bg-surface text-ink-secondary hover:border-brand-border hover:bg-brand-subtle hover:text-brand"
                 >

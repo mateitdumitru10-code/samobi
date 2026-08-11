@@ -1,5 +1,5 @@
 import { model, recipe, unmappedMaterial, unmappedMaterialOcurenta } from '@samobi/shared/db'
-import { inArray, notInArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, notInArray } from 'drizzle-orm'
 
 import { clientSql, db } from '../src/db.js'
 
@@ -13,10 +13,11 @@ import { clientSql, db } from '../src/db.js'
  * the second came out of nineteen months of real production, names the article
  * the workshop actually consumes, and is ready to use.
  *
- * Deactivation, not deletion: nothing is lost, the recipe stays behind the
- * model, and one UPDATE brings it back. The queue entries do go — a material
- * waiting to be mapped onto a retired model is work nobody should be asked to
- * do.
+ * Deactivation, not deletion: the model and its recipe stay, and one UPDATE
+ * brings them back. The queue entries do go, and those are a real loss — a
+ * material waiting to be mapped onto a retired model is work nobody should be
+ * asked to do, but a model brought back will be missing every line that was
+ * still waiting on a name.
  *
  *   pnpm --filter @samobi/api dezactiveaza-duplicate
  *   pnpm --filter @samobi/api dezactiveaza-duplicate -- --scrie
@@ -55,7 +56,7 @@ const stare = async (coduri: readonly string[]) =>
         where r.model_id = m.id and rl.observatii like 'din SAGA%')::int as din_saga,
       (select count(*) from production_order p where p.model_id = m.id)::int as bonuri,
       (select count(*) from unmapped_material_ocurenta o join recipe r on r.id = o.recipe_id
-        where r.model_id = m.id and not o.aplicat)::int as ocurente,
+        where r.model_id = m.id)::int as ocurente,
       (select count(*) from dimension d where d.model_id = m.id and d.activ
         and d.cod_saga_produs is not null)::int as dim_cu_produs
     from model m where m.cod in ${clientSql([...coduri])}
@@ -96,6 +97,14 @@ for (const [vechi, nou] of PERECHI) {
     oprite.push(vechi)
     continue
   }
+  // A replacement that cannot issue a bon is not a replacement. `din_saga > 0`
+  // does not imply it: the importer leaves `cod_saga_produs` null whenever a
+  // STANDARD dimension already existed.
+  if (b.dim_cu_produs === 0) {
+    console.log(`  ${vechi.padEnd(28)} ${nou} nu are produs finit legat — sărit`)
+    oprite.push(vechi)
+    continue
+  }
 
   console.log(
     `  ${vechi.padEnd(28)} ${String(a.linii).padStart(2)} linii, ${String(a.ocurente).padStart(2)} nemapate` +
@@ -122,6 +131,21 @@ const rezultat = await db.transaction(async (tx) => {
     await tx.select({ id: recipe.id }).from(recipe).where(inArray(recipe.modelId, ids))
   ).map((r) => r.id)
 
+  // Which names these recipes were waiting on, read before the occurrences go.
+  const candidati =
+    retete.length === 0
+      ? []
+      : [
+          ...new Set(
+            (
+              await tx
+                .selectDistinct({ id: unmappedMaterialOcurenta.unmappedMaterialId })
+                .from(unmappedMaterialOcurenta)
+                .where(inArray(unmappedMaterialOcurenta.recipeId, retete))
+            ).map((o) => o.id),
+          ),
+        ]
+
   const ocurente =
     retete.length === 0
       ? []
@@ -131,17 +155,26 @@ const rezultat = await db.transaction(async (tx) => {
           .returning({ id: unmappedMaterialOcurenta.id })
 
   // A queue entry with nowhere left to apply is not a decision anyone can make.
-  const orfane = await tx
-    .delete(unmappedMaterial)
-    .where(
-      sql`${unmappedMaterial.rezolvat} = false and ${notInArray(
-        unmappedMaterial.id,
-        db.selectDistinct({ id: unmappedMaterialOcurenta.unmappedMaterialId }).from(
-          unmappedMaterialOcurenta,
-        ),
-      )}`,
-    )
-    .returning({ denumire: unmappedMaterial.denumireExterna })
+  // Scoped to the names this run just orphaned: a global sweep would also take
+  // entries that had nothing to do with these models.
+  const orfane =
+    candidati.length === 0
+      ? []
+      : await tx
+          .delete(unmappedMaterial)
+          .where(
+            and(
+              inArray(unmappedMaterial.id, candidati),
+              eq(unmappedMaterial.rezolvat, false),
+              notInArray(
+                unmappedMaterial.id,
+                tx
+                  .selectDistinct({ id: unmappedMaterialOcurenta.unmappedMaterialId })
+                  .from(unmappedMaterialOcurenta),
+              ),
+            ),
+          )
+          .returning({ denumire: unmappedMaterial.denumireExterna })
 
   await tx.update(model).set({ activ: false }).where(inArray(model.id, ids))
 

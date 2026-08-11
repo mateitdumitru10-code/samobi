@@ -24,7 +24,7 @@ import { citesteSituatieBonuri, type BonPdf } from '../src/pdf/situatie-bonuri.j
  *
  *   pnpm --filter @samobi/api importa-retete-pdf
  *   pnpm --filter @samobi/api importa-retete-pdf -- --scrie
- *   pnpm --filter @samobi/api importa-retete-pdf -- --scrie --inlocuieste
+ *   pnpm --filter @samobi/api importa-retete-pdf -- --scrie --inlocuieste --doar=COD[,COD]
  */
 
 const DOSAR = resolve(import.meta.dirname, '..', '..', '..', 'docs')
@@ -45,6 +45,16 @@ const doar = new Set(
     .flatMap((a) => a.slice('--doar='.length).split(',').map((c) => c.trim().toUpperCase()))
     .filter((c) => c !== ''),
 )
+
+if (inlocuieste && doar.size === 0) {
+  console.error(
+    'Refuz să înlocuiesc totul. Liniile scrise de aici sunt fixe și poartă stofa\n' +
+      'folosită la acea producție, deci o înlocuire în bloc ar desface marcajul care\n' +
+      'face stofa alegere la bon, pe toate rețetele deodată.\n\n' +
+      'Spune ce înlocuiești:  --inlocuieste --doar=FOTOLIU-KIM',
+  )
+  process.exit(1)
+}
 
 /** Measurements nobody has given yet. Absurd on purpose: a plausible wrong
  * size is the kind that never gets corrected. */
@@ -125,14 +135,40 @@ console.log(
 
 // Which products already hang off a model, by code — not by name. A name match
 // between „CANAPEA CORINA" and „CANAPEA CORINA E+M" is two different products.
-const legate = new Map(
-  (
-    await clientSql<{ cod_saga_produs: string; model_id: string; model_cod: string }[]>`
+// A product can hang off more than one model — two TORRO recipes are booked as
+// one COLTAR TORRO. Keyed to a list, in a fixed order, because a Map that keeps
+// whichever row arrived last rewrites a different recipe on every run.
+const legate = new Map<string, { model_id: string; model_cod: string }[]>()
+for (const l of await clientSql<{ cod_saga_produs: string; model_id: string; model_cod: string }[]>`
       select d.cod_saga_produs, m.id as model_id, m.cod as model_cod
       from dimension d join model m on m.id = d.model_id
-      where d.cod_saga_produs is not null`
-  ).map((l) => [l.cod_saga_produs, l]),
+      where d.cod_saga_produs is not null
+      order by m.cod`) {
+  const grup = legate.get(l.cod_saga_produs)
+  if (grup === undefined) legate.set(l.cod_saga_produs, [{ ...l }])
+  else grup.push({ ...l })
+}
+
+/**
+ * The product's name, from the report or else from the catalogue.
+ *
+ * A report can print the name on a row of its own, leaving the product line
+ * with a code and nothing else. The model code is derived from the name, and
+ * an empty one fails the `model_cod_nevid` constraint — which rolls back the
+ * whole import, not just that product.
+ */
+const denumiriProduse = new Map(
+  (
+    await clientSql<{ cod_saga: string; denumire: string }[]>`
+      select cod_saga, denumire from saga_article
+      where cod_saga in ${clientSql(coduriProduse)}`
+  ).map((a) => [a.cod_saga, a.denumire]),
 )
+
+function numeProdus(bon: BonPdf): string {
+  const dinRaport = bon.produs.denumire.trim()
+  return dinRaport === '' ? (denumiriProduse.get(bon.produs.codSaga) ?? '') : dinRaport
+}
 
 const noi = bonuri.filter((b) => !legate.has(b.produs.codSaga))
 const existente = bonuri.filter((b) => legate.has(b.produs.codSaga))
@@ -140,7 +176,17 @@ const existente = bonuri.filter((b) => legate.has(b.produs.codSaga))
 console.log(`\n${noi.length} produse noi, ${existente.length} deja legate de un model.`)
 
 for (const b of noi) {
-  console.log(`  NOU  ${codModel(b.produs.denumire).padEnd(30)} ${b.consumuri.length} linii`)
+  console.log(`  NOU  ${codModel(numeProdus(b)).padEnd(30)} ${b.consumuri.length} linii`)
+}
+
+const faraNume = noi.filter((b) => codModel(numeProdus(b)) === '')
+if (faraNume.length > 0) {
+  console.error(
+    `\n${faraNume.length} produse noi nu au nume nici în raport, nici în nomenclator: ` +
+      `${faraNume.map((b) => b.produs.codSaga).join(', ')}`,
+  )
+  await clientSql.end({ timeout: 5 })
+  process.exit(1)
 }
 /** A model is replaced only if `--inlocuieste` is on and `--doar` allows it. */
 function deInlocuit(codModelExistent: string): boolean {
@@ -149,16 +195,17 @@ function deInlocuit(codModelExistent: string): boolean {
 }
 
 for (const b of existente) {
-  const l = legate.get(b.produs.codSaga)
-  console.log(
-    `  ${deInlocuit(l?.model_cod ?? '') ? 'ÎNLOCUIESC' : 'sar peste'}  ` +
-      `${(l?.model_cod ?? '').padEnd(30)} ${b.consumuri.length} linii din SAGA`,
-  )
+  for (const l of legate.get(b.produs.codSaga) ?? []) {
+    console.log(
+      `  ${deInlocuit(l.model_cod) ? 'ÎNLOCUIESC' : 'sar peste'}  ` +
+        `${l.model_cod.padEnd(30)} ${b.consumuri.length} linii din SAGA`,
+    )
+  }
 }
 
 if (doar.size > 0) {
   const necunoscute = [...doar].filter(
-    (c) => ![...legate.values()].some((l) => l.model_cod.toUpperCase() === c),
+    (c) => ![...legate.values()].flat().some((l) => l.model_cod.toUpperCase() === c),
   )
   if (necunoscute.length > 0) {
     console.error(`\n--doar numește modele care nu au produs legat: ${necunoscute.join(', ')}`)
@@ -170,8 +217,9 @@ if (doar.size > 0) {
 // What replacing the existing recipes would clear from the mapping queue —
 // counted over the models a replacement would actually reach.
 const idExistente = existente
-  .filter((b) => deInlocuit(legate.get(b.produs.codSaga)?.model_cod ?? ''))
-  .map((b) => legate.get(b.produs.codSaga)?.model_id ?? '')
+  .flatMap((b) => legate.get(b.produs.codSaga) ?? [])
+  .filter((l) => deInlocuit(l.model_cod))
+  .map((l) => l.model_id)
 if (idExistente.length > 0) {
   const [efect] = await clientSql.unsafe<{ ocurente: number; materiale: number }[]>(
     `select count(*)::int ocurente, count(distinct o.unmapped_material_id)::int materiale
@@ -232,19 +280,21 @@ const ciocniri: string[] = []
 
 await db.transaction(async (tx) => {
   for (const bon of noi) {
-    const cod = codModel(bon.produs.denumire)
+    const denumire = numeProdus(bon)
+    const cod = codModel(denumire)
 
     const [modelNou] = await tx
       .insert(model)
-      .values({ cod, denumire: bon.produs.denumire, familie: familie(bon.produs.denumire) })
+      .values({ cod, denumire, familie: familie(denumire) })
       .onConflictDoNothing()
       .returning()
 
     // The derived code can land on a model that already exists — „CANAPEA
     // CORINA II." becomes CANAPEA-CORINA-II, which was transcribed from a
     // sheet. Writing into it would be a replacement, and a replacement is
-    // asked for explicitly or not at all.
-    if (modelNou === undefined && !inlocuieste) {
+    // asked for explicitly, for that model, or not at all: `--doar` has to
+    // hold here too, or naming one model would quietly rewrite another.
+    if (modelNou === undefined && !deInlocuit(cod)) {
       ciocniri.push(cod)
       continue
     }
@@ -286,31 +336,32 @@ await db.transaction(async (tx) => {
 
   if (inlocuieste) {
     for (const bon of existente) {
-      const legat = legate.get(bon.produs.codSaga)
-      const modelId = legat?.model_id
-      if (modelId === undefined) continue
-      if (!deInlocuit(legat?.model_cod ?? '')) continue
+      for (const legat of legate.get(bon.produs.codSaga) ?? []) {
+        const modelId = legat.model_id
+        if (!deInlocuit(legat.model_cod)) continue
 
-      const retete = await tx.select().from(recipe).where(eq(recipe.modelId, modelId))
-      const retetaId = retete[0]?.id
-      if (retetaId === undefined) continue
+        const retete = await tx.select().from(recipe).where(eq(recipe.modelId, modelId))
+        const retetaId = retete[0]?.id
+        if (retetaId === undefined) continue
 
-      // The queue entries describe lines of a recipe that is about to stop
-      // existing; leaving them would insert duplicates the day somebody
-      // resolves the name.
-      await tx.execute(
-        sql`delete from unmapped_material_ocurenta where recipe_id in (
-              select id from recipe where model_id = ${modelId})`,
-      )
-      await tx.delete(recipeLine).where(eq(recipeLine.recipeId, retetaId))
-      await tx.insert(recipeLine).values(liniiPentru(bon).map((l) => ({ ...l, recipeId: retetaId })))
-      await tx
-        .update(recipe)
-        .set({ lockVersion: sql`${recipe.lockVersion} + 1` })
-        .where(eq(recipe.id, retetaId))
-      reteteScrise += 1
+        // The queue entries describe lines of a recipe that is about to stop
+        // existing; leaving them would insert duplicates the day somebody
+        // resolves the name.
+        await tx.execute(
+          sql`delete from unmapped_material_ocurenta where recipe_id in (
+                select id from recipe where model_id = ${modelId})`,
+        )
+        await tx.delete(recipeLine).where(eq(recipeLine.recipeId, retetaId))
+        await tx
+          .insert(recipeLine)
+          .values(liniiPentru(bon).map((l) => ({ ...l, recipeId: retetaId })))
+        await tx
+          .update(recipe)
+          .set({ lockVersion: sql`${recipe.lockVersion} + 1` })
+          .where(eq(recipe.id, retetaId))
+        reteteScrise += 1
+      }
     }
-
   }
 
   // Always, not only when replacing: an occurrence points at a line number in a

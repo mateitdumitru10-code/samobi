@@ -193,9 +193,28 @@ function stofaAnterioara(observatii: string | null): {
  */
 async function rezolvaSuplimentare(
   cerute: readonly { codSaga: string; cantitate: string }[],
-  reteta: { linii: readonly { codSaga: string | null; um: string; gestiuneDescarcare: string | null }[] },
+  reteta: {
+    linii: readonly {
+      id: string
+      codSaga: string | null
+      um: string
+      gestiuneDescarcare: string | null
+    }[]
+  },
+  /** recipe line id → the article chosen for it, for the variable lines */
+  alegeri: ReadonlyMap<string, string>,
 ): Promise<LinieSuplimentara[]> {
   if (cerute.length === 0) return []
+
+  // A variable line carries no article of its own; the one chosen on the bon is
+  // what a supplementary of the same code has to agree with, or the calculation
+  // stops on a unit mismatch the operator has no way to correct.
+  const alese = new Map(
+    reteta.linii.flatMap((l) => {
+      const ales = alegeri.get(l.id)
+      return ales === undefined ? [] : [[ales, l] as const]
+    }),
+  )
 
   const articole = new Map(
     (
@@ -210,19 +229,20 @@ async function rezolvaSuplimentare(
     ).map((a) => [a.codSaga, a]),
   )
 
-  // Whatever the recipe's own lines discharge from — a bon that mixes
-  // warehouses for one article is refused further down, and rightly.
-  const gestiuneReteta =
-    reteta.linii.map((l) => l.gestiuneDescarcare).find((g) => g !== null) ?? null
-
   return cerute.map((cerut, index) => {
     const articol = articole.get(cerut.codSaga)
     if (articol === undefined) {
       throw new CerereInvalida(`Articolul ${cerut.codSaga} nu există în nomenclator.`)
     }
 
-    const dinReteta = reteta.linii.find((l) => l.codSaga === cerut.codSaga)
-    const um = dinReteta?.um ?? articol.um.trim()
+    // A recipe line carrying this article settles both fields — including a
+    // null warehouse, which means „the default" and is a value, not a gap.
+    // Anything else takes the catalogue's own answer: borrowing the warehouse
+    // of the recipe's *other* lines booked screws out of the fabric store.
+    const dinReteta =
+      alese.get(cerut.codSaga) ?? reteta.linii.find((l) => l.codSaga === cerut.codSaga)
+
+    const um = (dinReteta?.um ?? articol.um).trim()
     if (um === '') {
       throw new CerereInvalida(
         `Articolul ${cerut.codSaga} nu are unitate de măsură în SAGA — exportul ar fi respins.`,
@@ -234,7 +254,8 @@ async function rezolvaSuplimentare(
       codSaga: cerut.codSaga,
       um,
       cantitate: cerut.cantitate,
-      gestiuneDescarcare: dinReteta?.gestiuneDescarcare ?? gestiuneReteta ?? articol.gestiuneImplicita,
+      gestiuneDescarcare:
+        dinReteta === undefined ? articol.gestiuneImplicita : dinReteta.gestiuneDescarcare,
     }
   })
 }
@@ -270,7 +291,11 @@ export async function calculeazaCuDenumiri(intrare: {
     alegeriMateriale: new Map(Object.entries(intrare.alegeri)),
     cantitatiManuale: new Map(Object.entries(intrare.cantitati ?? {})),
     liniiExcluse: new Set(intrare.liniiExcluse ?? []),
-    liniiSuplimentare: await rezolvaSuplimentare(intrare.liniiSuplimentare ?? [], context.reteta),
+    liniiSuplimentare: await rezolvaSuplimentare(
+      intrare.liniiSuplimentare ?? [],
+      context.reteta,
+      new Map(Object.entries(intrare.alegeri)),
+    ),
   })
 
   const coduri = rezultat.linii.map((l) => l.codSaga)

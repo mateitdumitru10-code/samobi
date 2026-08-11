@@ -114,6 +114,14 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
 
     const dimensiune = calcul.rezultat.dimensiune
 
+    // Every line excluded leaves nothing to book, and an empty INSERT is a
+    // crash rather than an answer.
+    if (calcul.linii.length === 0) {
+      throw new CerereInvalida(
+        'Bonul nu are nicio linie de consum — toate liniile rețetei au fost scoase.',
+      )
+    }
+
     /**
      * Null is allowed, and deliberately.
      *

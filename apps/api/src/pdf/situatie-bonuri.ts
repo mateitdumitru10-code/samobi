@@ -42,7 +42,8 @@ const NUMAR = String.raw`[\d ]+\.\d+`
  * because a fragment like `00015370  BUC  6.4000` would otherwise pass as a
  * line whose quantity is really a price.
  *
- * The name is optional, and that is not tidiness: in FOTOLIU KIM the product's
+ * The name is optional only where a unit follows the code, and that is not
+ * tidiness: in FOTOLIU KIM the product's
  * name printed on a row of its own at the foot of the page, so its line began
  * with the code. Requiring a name there matched nothing, the file yielded no
  * bon at all, and seventeen materials went missing without a word — the model
@@ -52,8 +53,12 @@ const NUMAR = String.raw`[\d ]+\.\d+`
 const CU_UM = new RegExp(
   String.raw`^(?:(.*?)\s+)?(\d{8})\s+([A-Z0-9][A-Z0-9 ]{0,7}?)\s+(${NUMAR})\s+(${NUMAR})(?:\s+(${NUMAR}))?\s*$`,
 )
+// Here the name stays mandatory. With neither a name nor a unit, three figures
+// after a code is exactly the shape of a fragment of a row split across content
+// streams — and the figure in first position would be a price read as a
+// quantity, which becomes a wrong stock movement in accounting.
 const FARA_UM = new RegExp(
-  String.raw`^(?:(.*?)\s+)?(\d{8})\s+(${NUMAR})\s+(${NUMAR})\s+(${NUMAR})\s*$`,
+  String.raw`^(.*?)\s+(\d{8})\s+(${NUMAR})\s+(${NUMAR})\s+(${NUMAR})\s*$`,
 )
 const ANTET_BON = /^(\d+)\s+(\d\d\.\d\d\.\d{4})\b/
 /**
