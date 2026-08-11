@@ -35,6 +35,15 @@ interface Dimensiune {
 interface Context {
   dimensiuni: Dimensiune[]
   liniiVariabile: LinieVariabila[]
+  nemapate: MaterialNemapat[]
+}
+
+/** A material the recipe names and the catalogue never matched. */
+interface MaterialNemapat {
+  denumire: string
+  nrLinie: number
+  cantitate: string
+  um: string
 }
 
 interface LinieVariabila {
@@ -411,6 +420,36 @@ function BonNou() {
           </datalist>
         </div>
       </div>
+
+      {/*
+        A warning, never a block: the workshop has to book what it produced
+        today, and a material nobody has mapped yet is not its problem. But the
+        bon will discharge less than was consumed, and that has to be said.
+      */}
+      {(context.data?.nemapate.length ?? 0) > 0 && (
+        <div className="rounded-lg border border-atentie-border bg-atentie-bg px-3 py-2 text-sm">
+          <p className="font-medium text-atentie">
+            Rețeta are {context.data?.nemapate.length} materiale fără cod în SAGA. Bonul se poate
+            emite, dar nu le va descărca.
+          </p>
+          <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-secondary">
+            {context.data?.nemapate.map((m) => (
+              <li key={`${m.nrLinie}-${m.denumire}`}>
+                linia {m.nrLinie}: {m.denumire}{' '}
+                <span className="text-ink-muted">
+                  ({cant(m.cantitate)} {m.um})
+                </span>
+              </li>
+            ))}
+          </ul>
+          <a
+            href="#/nomenclator"
+            className="mt-1 inline-block text-xs text-brand underline underline-offset-2"
+          >
+            Leagă-le în Nomenclator → materiale nemapate
+          </a>
+        </div>
+      )}
 
       {dimensiune !== undefined && dimensiune.codSagaProdus === null && (
         <p className="rounded-lg border border-atentie-border bg-atentie-bg px-3 py-2 text-sm text-atentie">

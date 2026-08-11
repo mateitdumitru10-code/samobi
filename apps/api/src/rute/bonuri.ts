@@ -4,11 +4,14 @@ import {
   model,
   productionOrder,
   productionOrderLine,
+  recipe,
   sagaArticle,
+  unmappedMaterial,
+  unmappedMaterialOcurenta,
 } from '@samobi/shared/db'
 import { EroareCalcul } from '@samobi/shared/calcul'
 import { schemaBonNou, schemaExport, schemaPrevizualizare } from '@samobi/shared/scheme'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -45,12 +48,39 @@ export function ruteBonuri(app: FastifyInstance, verifica: VerificatorToken) {
       .from(dimension)
       .where(and(eq(dimension.modelId, id), eq(dimension.activ, true)))
 
+    /**
+     * Materials the recipe names but the catalogue never matched.
+     *
+     * They do not stop a bon, and should not: the workshop has to book what it
+     * produced today. But those lines are simply absent from the recipe, so the
+     * bon discharges less than the factory consumed, and until now it did that
+     * without a word on screen.
+     */
+    const nemapate = await db
+      .select({
+        denumire: unmappedMaterial.denumireExterna,
+        nrLinie: unmappedMaterialOcurenta.nrLinie,
+        cantitate: unmappedMaterialOcurenta.cantitate,
+        um: unmappedMaterialOcurenta.um,
+      })
+      .from(unmappedMaterialOcurenta)
+      .innerJoin(unmappedMaterial, eq(unmappedMaterial.id, unmappedMaterialOcurenta.unmappedMaterialId))
+      .innerJoin(recipe, eq(recipe.id, unmappedMaterialOcurenta.recipeId))
+      .where(
+        and(
+          eq(recipe.modelId, id),
+          eq(unmappedMaterialOcurenta.aplicat, false),
+          eq(unmappedMaterial.rezolvat, false),
+        ),
+      )
+      .orderBy(asc(unmappedMaterialOcurenta.nrLinie))
+
     if (dimensiuneId === undefined) {
-      return { dimensiuni, liniiVariabile: [] }
+      return { dimensiuni, liniiVariabile: [], nemapate }
     }
 
     const context = await incarcaPentruCalcul(id, dimensiuneId)
-    return { dimensiuni, liniiVariabile: context.liniiVariabile }
+    return { dimensiuni, liniiVariabile: context.liniiVariabile, nemapate }
   })
 
   /**
