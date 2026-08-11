@@ -22,6 +22,12 @@ import { cant, normalizeazaZecimala } from './numere.js'
  *   3. Per line, for the piece that goes in a second fabric, with the fabric
  *      the recipe was imported with offered as the first suggestion.
  *
+ * So is the number of lines. A model with two fabric lines is sometimes
+ * upholstered in one, and an order sometimes needs a material the recipe never
+ * had; both are facts about the order, not about the model, and neither is
+ * worth a new version of the recipe. A dropped line stays on screen, greyed,
+ * with the way back one click away.
+ *
  * The metreage is a suggestion, not a law. The recipe recorded what one run
  * consumed on one roll; the next fabric is a different width and cuts
  * differently, so the figure is editable here and carries `sursa = manual`
@@ -44,6 +50,13 @@ export interface LinieStofa {
 
 interface Stofa extends ArticolGasit {
   folosiri: number
+}
+
+/** A material added on this bon alone. `cheie` only ever lives in the browser. */
+export interface StofaSuplimentara {
+  cheie: string
+  articol: ArticolGasit | null
+  cantitate: string
 }
 
 /** Chips fit one row on a laptop; more than this is a list, not a shortcut. */
@@ -81,6 +94,13 @@ export function AlegeStofe({
   onSterge,
   onCantitate,
   onResetCantitate,
+  excluse,
+  onExclude,
+  onInclude,
+  suplimentare,
+  onAdaugaSuplimentar,
+  onSchimbaSuplimentar,
+  onStergeSuplimentar,
 }: {
   linii: LinieStofa[]
   alese: Record<string, ArticolGasit>
@@ -93,26 +113,36 @@ export function AlegeStofe({
   onSterge: (linieId: string) => void
   onCantitate: (linieId: string, valoare: string) => void
   onResetCantitate: (linieId: string) => void
+  /** recipe line ids this bon does not use */
+  excluse: readonly string[]
+  onExclude: (linieId: string) => void
+  onInclude: (linieId: string) => void
+  suplimentare: readonly StofaSuplimentara[]
+  onAdaugaSuplimentar: () => void
+  onSchimbaSuplimentar: (cheie: string, modificare: Partial<StofaSuplimentara>) => void
+  onStergeSuplimentar: (cheie: string) => void
 }) {
   const populare = useStofe('', false)
-  const numarAlese = linii.filter((l) => alese[l.id] !== undefined).length
-  const complet = numarAlese === linii.length
-  const maiMulte = linii.length > 1
+  const active = linii.filter((l) => !excluse.includes(l.id))
+  const numarAlese = active.filter((l) => alese[l.id] !== undefined).length
+  const complet = numarAlese === active.length
+  const maiMulte = active.length > 1
 
   /**
    * Whether every line ended up in the same fabric — which is the normal case,
    * and worth saying out loud so nobody re-reads four identical rows.
    */
   const uniforma = useMemo(() => {
-    if (!complet) return null
-    const coduri = new Set(linii.map((l) => alese[l.id]?.codSaga))
-    return coduri.size === 1 ? alese[linii[0]?.id ?? '']?.denumire : null
-  }, [complet, linii, alese])
+    if (!complet || active.length < 2) return null
+    const coduri = new Set(active.map((l) => alese[l.id]?.codSaga))
+    return coduri.size === 1 ? alese[active[0]?.id ?? '']?.denumire : null
+  }, [complet, active, alese])
 
-  const total = linii.reduce(
-    (suma, l) => suma + Number(normalizeazaZecimala(cantitati[l.id] ?? '') ?? l.cantitate ?? 0),
-    0,
-  )
+  const total =
+    active.reduce(
+      (suma, l) => suma + Number(normalizeazaZecimala(cantitati[l.id] ?? '') ?? l.cantitate ?? 0),
+      0,
+    ) + suplimentare.reduce((suma, s) => suma + Number(normalizeazaZecimala(s.cantitate) ?? 0), 0)
 
   return (
     <section className="rounded-lg border border-line bg-surface-sunken p-4">
@@ -126,7 +156,7 @@ export function AlegeStofe({
                 : 'border-line-strong bg-surface text-ink-secondary'
             }`}
           >
-            {numarAlese}/{linii.length}
+            {numarAlese}/{active.length}
             {complet ? ' ✓' : ''}
           </span>
         </h3>
@@ -154,7 +184,7 @@ export function AlegeStofe({
             latime="w-72"
           />
           <span className="text-xs text-ink-muted">
-            completează toate cele {linii.length} linii
+            completează toate cele {active.length} linii
           </span>
         </div>
       )}
@@ -167,7 +197,7 @@ export function AlegeStofe({
               <li key={s.codSaga}>
                 <button
                   type="button"
-                  onClick={() => (maiMulte ? onAlegeToate(s) : onAlege(linii[0]?.id ?? '', s))}
+                  onClick={() => (maiMulte ? onAlegeToate(s) : onAlege(active[0]?.id ?? '', s))}
                   title={`${s.codSaga} · în ${s.folosiri} rețete`}
                   className="insigna border-line-strong bg-surface text-ink-secondary hover:border-brand-border hover:bg-brand-subtle hover:text-brand"
                 >
@@ -191,9 +221,28 @@ export function AlegeStofe({
             onSterge={() => onSterge(linie.id)}
             onCantitate={(v) => onCantitate(linie.id, v)}
             onResetCantitate={() => onResetCantitate(linie.id)}
+            exclusa={excluse.includes(linie.id)}
+            onExclude={() => onExclude(linie.id)}
+            onInclude={() => onInclude(linie.id)}
+          />
+        ))}
+        {suplimentare.map((s) => (
+          <RandSuplimentar
+            key={s.cheie}
+            stofa={s}
+            onSchimba={(modificare) => onSchimbaSuplimentar(s.cheie, modificare)}
+            onSterge={() => onStergeSuplimentar(s.cheie)}
           />
         ))}
       </ul>
+
+      <button
+        type="button"
+        onClick={onAdaugaSuplimentar}
+        className="buton buton-discret buton-mic mt-2"
+      >
+        + adaugă un material
+      </button>
 
       {uniforma != null && (
         <p className="mt-2 text-xs text-succes">Toate liniile în {uniforma}.</p>
@@ -210,6 +259,9 @@ function RandStofa({
   onSterge,
   onCantitate,
   onResetCantitate,
+  exclusa,
+  onExclude,
+  onInclude,
 }: {
   linie: LinieStofa
   ales: ArticolGasit | undefined
@@ -218,7 +270,29 @@ function RandStofa({
   onSterge: () => void
   onCantitate: (valoare: string) => void
   onResetCantitate: () => void
+  exclusa: boolean
+  onExclude: () => void
+  onInclude: () => void
 }) {
+  if (exclusa) {
+    return (
+      <li className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-line bg-surface-sunken px-3 py-2 text-sm text-ink-muted">
+        <span className="w-40 shrink-0 line-through">linia {linie.nrLinie}</span>
+        <span className="line-through">
+          {cant(linie.cantitate)} {linie.um}
+        </span>
+        <span className="text-xs">nu intră pe bon</span>
+        <button
+          type="button"
+          onClick={onInclude}
+          className="text-xs text-brand underline underline-offset-2"
+        >
+          pune la loc
+        </button>
+      </li>
+    )
+  }
+
   const dinReteta = cant(linie.cantitate)
   const modificata = cantitate !== undefined
   const invalida = modificata && normalizeazaZecimala(cantitate) === null
@@ -297,6 +371,76 @@ function RandStofa({
           </button>
         </span>
       )}
+
+      <button
+        type="button"
+        onClick={onExclude}
+        title="Scoate linia de pe bonul acesta. Rețeta rămâne neatinsă."
+        className="ml-auto text-xs text-ink-muted underline underline-offset-2 hover:text-danger"
+      >
+        scoate
+      </button>
+    </li>
+  )
+}
+
+/** A material this bon adds. No recipe line behind it, so nothing to fall back on. */
+function RandSuplimentar({
+  stofa,
+  onSchimba,
+  onSterge,
+}: {
+  stofa: StofaSuplimentara
+  onSchimba: (modificare: Partial<StofaSuplimentara>) => void
+  onSterge: () => void
+}) {
+  const invalida = stofa.cantitate.trim() !== '' && normalizeazaZecimala(stofa.cantitate) === null
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-brand-border bg-brand-subtle px-3 py-2 text-sm">
+      <span className="w-40 shrink-0 text-ink-secondary">în plus pe bon</span>
+      <span className="flex shrink-0 items-center gap-1.5">
+        <input
+          value={stofa.cantitate}
+          inputMode="decimal"
+          aria-label="Cantitate material suplimentar"
+          aria-invalid={invalida}
+          placeholder="0"
+          onChange={(e) => onSchimba({ cantitate: e.target.value })}
+          className="camp camp-mic w-20 text-right font-medium tabular-nums"
+        />
+        <span className="text-xs text-ink-muted">{stofa.articol?.um ?? ''}</span>
+      </span>
+
+      {stofa.articol === null ? (
+        <CautaStofa
+          onAlege={(articol) => onSchimba({ articol })}
+          placeholder="caută materialul…"
+          latime="w-64"
+        />
+      ) : (
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="insigna border-brand-border bg-surface text-brand">
+            {stofa.articol.denumire}
+          </span>
+          <span className="font-mono text-xs text-ink-muted">{stofa.articol.codSaga}</span>
+          <button
+            type="button"
+            onClick={() => onSchimba({ articol: null })}
+            className="text-xs text-brand underline underline-offset-2"
+          >
+            schimbă
+          </button>
+        </span>
+      )}
+
+      <button
+        type="button"
+        onClick={onSterge}
+        className="ml-auto text-xs text-ink-muted underline underline-offset-2 hover:text-danger"
+      >
+        scoate
+      </button>
     </li>
   )
 }

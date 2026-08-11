@@ -7,6 +7,7 @@ import {
   EroareFormulaLipsa,
   EroareGestiuneInconsistenta,
   EroareInaltimeLipsa,
+  EroareLinieExclusaNepermisa,
   EroareMaterialNerezolvat,
   EroareNumarInvalid,
   EroareRezultatNenumeric,
@@ -213,15 +214,57 @@ export function calculeazaConsumuri(intrare: IntrareCalcul): RezultatCalcul {
     }
   >()
 
+  /**
+   * One place where an article's totals are added up, so a line the bon adds
+   * merges with a recipe line carrying the same article instead of becoming a
+   * second row SAGA would reject.
+   */
+  function acumuleaza(
+    codSaga: string,
+    um: string,
+    gestiuneDescarcare: string | null,
+    neta: Dec,
+    bruta: Dec,
+    contributie: Contributie,
+  ): void {
+    const existent = acumulator.get(codSaga)
+    if (existent === undefined) {
+      acumulator.set(codSaga, { um, gestiuneDescarcare, neta, bruta, contributii: [contributie] })
+      return
+    }
+
+    // Same article on two lines is normal — the same fabric on the seat and on
+    // the back. Disagreeing on its unit or its warehouse is not.
+    if (existent.um !== um) throw new EroareUmInconsistenta(codSaga, existent.um, um)
+    if (existent.gestiuneDescarcare !== gestiuneDescarcare) {
+      throw new EroareGestiuneInconsistenta(
+        codSaga,
+        existent.gestiuneDescarcare,
+        gestiuneDescarcare,
+      )
+    }
+
+    existent.neta = existent.neta.plus(neta)
+    existent.bruta = existent.bruta.plus(bruta)
+    existent.contributii.push(contributie)
+  }
+
   const manuale = intrare.cantitatiManuale ?? new Map<string, string>()
-  for (const [linieId] of manuale) {
-    const linie = reteta.linii.find((l) => l.id === linieId)
-    if (linie !== undefined && !linie.esteVariabil) {
+  const excluse = intrare.liniiExcluse ?? new Set<string>()
+  for (const linie of reteta.linii) {
+    if (!linie.esteVariabil && manuale.has(linie.id)) {
       throw new EroareCantitateManualaNepermisa(linie.nrLinie)
+    }
+    if (!linie.esteVariabil && excluse.has(linie.id)) {
+      throw new EroareLinieExclusaNepermisa(linie.nrLinie)
     }
   }
 
   for (const linie of reteta.linii) {
+    // A line the bon does not use: no article is asked for, and nothing is
+    // consumed. Only variable lines get here — the check above saw to that.
+    if (excluse.has(linie.id)) continue
+
     const {
       neta: netaDinReteta,
       sursa: sursaReteta,
@@ -267,34 +310,30 @@ export function calculeazaConsumuri(intrare: IntrareCalcul): RezultatCalcul {
       cantitateBruta: catreString(bruta),
     }
 
-    const existent = acumulator.get(codSaga)
-    if (existent === undefined) {
-      acumulator.set(codSaga, {
-        um: linie.um,
-        gestiuneDescarcare: linie.gestiuneDescarcare,
-        neta,
-        bruta,
-        contributii: [contributie],
-      })
-      continue
-    }
+    acumuleaza(codSaga, linie.um, linie.gestiuneDescarcare, neta, bruta, contributie)
+  }
 
-    // Same article on two lines is normal — the same fabric on the seat and on
-    // the back. Disagreeing on its unit or its warehouse is not.
-    if (existent.um !== linie.um) {
-      throw new EroareUmInconsistenta(codSaga, existent.um, linie.um)
+  // Added by hand on this bon: no waste percentage, because there is no recipe
+  // line to take one from, and the figure was typed by someone looking at the
+  // material.
+  for (const extra of intrare.liniiSuplimentare ?? []) {
+    const netaUnitara = parseNumar(extra.cantitate, 'cantitate suplimentară')
+    if (netaUnitara.lessThanOrEqualTo(0)) {
+      throw new EroareNumarInvalid('cantitate suplimentară', extra.cantitate)
     }
-    if (existent.gestiuneDescarcare !== linie.gestiuneDescarcare) {
-      throw new EroareGestiuneInconsistenta(
-        codSaga,
-        existent.gestiuneDescarcare,
-        linie.gestiuneDescarcare,
-      )
-    }
+    const neta = netaUnitara.times(cantitateProdus)
 
-    existent.neta = existent.neta.plus(neta)
-    existent.bruta = existent.bruta.plus(bruta)
-    existent.contributii.push(contributie)
+    acumuleaza(extra.codSaga, extra.um, extra.gestiuneDescarcare, neta, neta, {
+      linieId: extra.id,
+      nrLinie: 0,
+      grup: 'SUPLIMENTAR',
+      sursa: 'manual',
+      formulaEvaluata: null,
+      formula: null,
+      procentPierderi: '0',
+      cantitateNeta: catreString(neta),
+      cantitateBruta: catreString(neta),
+    })
   }
 
   const linii: ConsumLine[] = []

@@ -9,6 +9,7 @@ import {
   calculeazaConsumuri,
   type DimensiuneCeruta,
   type LinieReteta,
+  type LinieSuplimentara,
   type RezultatCalcul,
 } from '@samobi/shared/calcul'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
@@ -181,6 +182,63 @@ function stofaAnterioara(observatii: string | null): {
   }
 }
 
+/**
+ * Fills in what a material added by hand does not carry: its unit and the
+ * warehouse it comes out of.
+ *
+ * Neither is asked of the browser. The unit is what makes an export land wrong
+ * in SAGA, and a recipe line already using the same article is a better answer
+ * than the catalogue — the sheets and the catalogue do not always agree, and
+ * two rows of one article disagreeing on the unit stops the calculation.
+ */
+async function rezolvaSuplimentare(
+  cerute: readonly { codSaga: string; cantitate: string }[],
+  reteta: { linii: readonly { codSaga: string | null; um: string; gestiuneDescarcare: string | null }[] },
+): Promise<LinieSuplimentara[]> {
+  if (cerute.length === 0) return []
+
+  const articole = new Map(
+    (
+      await db
+        .select({
+          codSaga: sagaArticle.codSaga,
+          um: sagaArticle.um,
+          gestiuneImplicita: sagaArticle.gestiuneImplicita,
+        })
+        .from(sagaArticle)
+        .where(inArray(sagaArticle.codSaga, [...new Set(cerute.map((c) => c.codSaga))]))
+    ).map((a) => [a.codSaga, a]),
+  )
+
+  // Whatever the recipe's own lines discharge from — a bon that mixes
+  // warehouses for one article is refused further down, and rightly.
+  const gestiuneReteta =
+    reteta.linii.map((l) => l.gestiuneDescarcare).find((g) => g !== null) ?? null
+
+  return cerute.map((cerut, index) => {
+    const articol = articole.get(cerut.codSaga)
+    if (articol === undefined) {
+      throw new CerereInvalida(`Articolul ${cerut.codSaga} nu există în nomenclator.`)
+    }
+
+    const dinReteta = reteta.linii.find((l) => l.codSaga === cerut.codSaga)
+    const um = dinReteta?.um ?? articol.um.trim()
+    if (um === '') {
+      throw new CerereInvalida(
+        `Articolul ${cerut.codSaga} nu are unitate de măsură în SAGA — exportul ar fi respins.`,
+      )
+    }
+
+    return {
+      id: `suplimentar-${index + 1}`,
+      codSaga: cerut.codSaga,
+      um,
+      cantitate: cerut.cantitate,
+      gestiuneDescarcare: dinReteta?.gestiuneDescarcare ?? gestiuneReteta ?? articol.gestiuneImplicita,
+    }
+  })
+}
+
 export interface ConsumCuDenumire {
   codSaga: string
   denumire: string
@@ -200,6 +258,8 @@ export async function calculeazaCuDenumiri(intrare: {
   cantitate: string
   alegeri: Record<string, string>
   cantitati?: Record<string, string>
+  liniiExcluse?: string[]
+  liniiSuplimentare?: { codSaga: string; cantitate: string }[]
 }) {
   const context = await incarcaPentruCalcul(intrare.modelId, intrare.dimensiuneId)
 
@@ -209,6 +269,8 @@ export async function calculeazaCuDenumiri(intrare: {
     cantitateProdus: intrare.cantitate,
     alegeriMateriale: new Map(Object.entries(intrare.alegeri)),
     cantitatiManuale: new Map(Object.entries(intrare.cantitati ?? {})),
+    liniiExcluse: new Set(intrare.liniiExcluse ?? []),
+    liniiSuplimentare: await rezolvaSuplimentare(intrare.liniiSuplimentare ?? [], context.reteta),
   })
 
   const coduri = rezultat.linii.map((l) => l.codSaga)

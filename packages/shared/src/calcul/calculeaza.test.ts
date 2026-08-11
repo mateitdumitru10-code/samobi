@@ -6,6 +6,7 @@ import {
   EroareCantitateManualaNepermisa,
   EroareGestiuneInconsistenta,
   EroareInaltimeLipsa,
+  EroareLinieExclusaNepermisa,
   EroareMaterialNerezolvat,
   EroareRezultatNenumeric,
   EroareUmInconsistenta,
@@ -428,5 +429,90 @@ describe('reproductibilitate', () => {
     expect(r.versiuneReteta).toBe(1)
     expect(r.retetaId).toBe('reteta-1')
     expect(r.dimensiuneId).toBe('dim-1')
+  })
+})
+
+describe('liniile de pe bon, scoase și adăugate', () => {
+  function stofa(cantitateFixa: string) {
+    return linie({
+      codSaga: null,
+      esteVariabil: true,
+      categorieVariabila: 'TEXTIL',
+      um: 'ML',
+      modCalcul: 'fixa',
+      cantitateFixa,
+    })
+  }
+
+  it('o linie scoasă nu consumă nimic și nu mai cere material', () => {
+    const a = stofa('10')
+    const b = stofa('4')
+    const r = calculeazaConsumuri({
+      reteta: reteta([a, b]),
+      dimensiune: DIM_2000x1600,
+      cantitateProdus: '1',
+      // Nimic ales pentru b: dacă ar intra în calcul, ar da EroareMaterialNerezolvat.
+      alegeriMateriale: new Map([[a.id, '00023684']]),
+      liniiExcluse: new Set([b.id]),
+    })
+    expect(r.linii).toHaveLength(1)
+    expect(r.linii[0]?.cantitateBruta).toBe('10')
+  })
+
+  it('refuză scoaterea unei linii fixe', () => {
+    const l = linie({ modCalcul: 'fixa', cantitateFixa: '4' })
+    expect(() =>
+      calculeazaConsumuri({
+        reteta: reteta([l]),
+        dimensiune: DIM_2000x1600,
+        cantitateProdus: '1',
+        alegeriMateriale: FARA_ALEGERI,
+        liniiExcluse: new Set([l.id]),
+      }),
+    ).toThrow(EroareLinieExclusaNepermisa)
+  })
+
+  it('un material adăugat se înmulțește cu bucățile și nu ia pierderi', () => {
+    const r = calculeazaConsumuri({
+      reteta: reteta([linie({ modCalcul: 'fixa', cantitateFixa: '1', procentPierderi: '10' })]),
+      dimensiune: DIM_2000x1600,
+      cantitateProdus: '3',
+      alegeriMateriale: FARA_ALEGERI,
+      liniiSuplimentare: [
+        {
+          id: 'suplimentar-1',
+          codSaga: '00019038',
+          um: 'ML',
+          cantitate: '2',
+          gestiuneDescarcare: null,
+        },
+      ],
+    })
+    const adaugat = r.linii.find((l) => l.codSaga === '00019038')
+    expect(adaugat?.cantitateNeta).toBe('6')
+    expect(adaugat?.cantitateBruta).toBe('6')
+    expect(adaugat?.contributii[0]?.sursa).toBe('manual')
+  })
+
+  it('se adună cu linia de rețetă care poartă același articol', () => {
+    const a = stofa('10')
+    const r = calculeazaConsumuri({
+      reteta: reteta([a]),
+      dimensiune: DIM_2000x1600,
+      cantitateProdus: '1',
+      alegeriMateriale: new Map([[a.id, '00023684']]),
+      liniiSuplimentare: [
+        {
+          id: 'suplimentar-1',
+          codSaga: '00023684',
+          um: 'ML',
+          cantitate: '2',
+          gestiuneDescarcare: null,
+        },
+      ],
+    })
+    expect(r.linii).toHaveLength(1)
+    expect(r.linii[0]?.cantitateBruta).toBe('12')
+    expect(r.linii[0]?.contributii).toHaveLength(2)
   })
 })

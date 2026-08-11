@@ -69,6 +69,23 @@ export interface Reteta {
   linii: readonly LinieReteta[]
 }
 
+/**
+ * A consumption the bon adds beyond the recipe.
+ *
+ * The recipe is what the model normally takes. A particular order can need a
+ * second fabric the recipe never had — and the alternative to allowing it here
+ * is a new version of the recipe for something that happened once.
+ */
+export interface LinieSuplimentara {
+  /** stable within one bon; recorded in `contributii`, not a recipe line id */
+  id: string
+  codSaga: string
+  um: string
+  /** per product, exactly like a recipe line */
+  cantitate: string
+  gestiuneDescarcare: string | null
+}
+
 export interface IntrareCalcul {
   reteta: Reteta
   dimensiune: DimensiuneCeruta
@@ -82,6 +99,13 @@ export interface IntrareCalcul {
    * of fabric covers the same sofa in less.
    */
   cantitatiManuale?: ReadonlyMap<string, string>
+  /**
+   * Variable lines this bon does not use. A model with two fabric lines is
+   * sometimes upholstered in one, and the recipe cannot know which.
+   */
+  liniiExcluse?: ReadonlySet<string>
+  /** consumptions this bon adds on top of the recipe */
+  liniiSuplimentare?: readonly LinieSuplimentara[]
 }
 
 /** One recipe line's contribution to a consumption row. Kept for audit. */

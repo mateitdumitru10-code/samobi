@@ -22,6 +22,20 @@ export const schemaPrevizualizare = z.object({
    * lines. The recipe records what one run consumed; the next roll is wider.
    */
   cantitati: z.record(z.string().uuid(), cantitate).default({}),
+  /**
+   * Variable lines this bon does not use. Two fabric lines on a model that is
+   * sometimes upholstered in one is a fact about the order, not the recipe.
+   */
+  liniiExcluse: z.array(z.string().uuid()).max(50).default([]),
+  /**
+   * Materials added on this bon only. The unit and the warehouse are resolved
+   * server-side from the catalogue — the browser does not get to decide what
+   * unit an article is consumed in.
+   */
+  liniiSuplimentare: z
+    .array(z.object({ codSaga: z.string().trim().min(1), cantitate }))
+    .max(20)
+    .default([]),
 })
 export type Previzualizare = z.infer<typeof schemaPrevizualizare>
 

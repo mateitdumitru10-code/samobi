@@ -171,3 +171,15 @@ export class EroareCantitateManualaNepermisa extends EroareCalcul {
     )
   }
 }
+
+/**
+ * Dropping a line is allowed exactly where the article is chosen anyway. A
+ * recipe whose fixed lines can be left out on the bon is not a recipe.
+ */
+export class EroareLinieExclusaNepermisa extends EroareCalcul {
+  readonly cod = 'LINIE_EXCLUSA_NEPERMISA'
+
+  constructor(nrLinie: number) {
+    super(`Linia ${nrLinie} nu este variabilă și nu poate fi scoasă de pe bon.`, { nrLinie })
+  }
+}

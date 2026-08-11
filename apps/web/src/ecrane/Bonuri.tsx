@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { apel, EroareApi } from '../lib/api.js'
-import { AlegeStofe } from '../ui/AlegeStofe.js'
+import { AlegeStofe, type StofaSuplimentara } from '../ui/AlegeStofe.js'
 import { CautaArticol, type ArticolGasit } from '../ui/CautaArticol.js'
 import { useNotificari } from '../ui/Notificari.js'
 import { cant, dataRo, normalizeazaZecimala } from '../ui/numere.js'
@@ -126,6 +126,10 @@ function BonNou() {
   // Only the lines whose metreage was typed over. Absent means „ca în rețetă",
   // which is what the bon should say when nobody touched it.
   const [cantitatiLinii, setCantitatiLinii] = useState<Record<string, string>>({})
+  // Lines the recipe has and this bon does not use, and materials the other way
+  // round. Both are facts about the order; the recipe stays as it is.
+  const [liniiExcluse, setLiniiExcluse] = useState<string[]>([])
+  const [suplimentare, setSuplimentare] = useState<StofaSuplimentara[]>([])
   const [salvat, setSalvat] = useState<{ cantitate: string; linii: Consum[] } | null>(null)
   const refCantitate = useRef<HTMLInputElement>(null)
 
@@ -154,11 +158,17 @@ function BonNou() {
     setDimensiuneId('')
     setAlegeri({})
     setCantitatiLinii({})
+    setLiniiExcluse([])
+    setSuplimentare([])
   }, [modelId])
 
   const dimensiune = context.data?.dimensiuni.find((d) => d.id === dimensiuneId)
   const liniiVariabile = context.data?.liniiVariabile ?? []
-  const toateAlese = liniiVariabile.every((l) => alegeri[l.id] !== undefined)
+  const toateAlese =
+    liniiVariabile
+      .filter((l) => !liniiExcluse.includes(l.id))
+      .every((l) => alegeri[l.id] !== undefined) &&
+    suplimentare.every((s) => s.articol !== null && normalizeazaZecimala(s.cantitate) !== null)
   // The fabric gets its own screen: it is the choice made on every bon, while
   // the rest of the variable lines are the rare exception.
   const stofe = liniiVariabile.filter((l) => l.categorieVariabila === 'TEXTIL')
@@ -181,6 +191,28 @@ function BonNou() {
     ([, v]) => normalizeazaZecimala(v) === null,
   )
 
+  const exclude = (linieId: string) => {
+    setLiniiExcluse((curente) => [...new Set([...curente, linieId])])
+    // The article it was given no longer means anything, and leaving it behind
+    // would send it back to the API the moment the line is restored.
+    sterge(linieId)
+    resetCantitate(linieId)
+  }
+  const include = (linieId: string) =>
+    setLiniiExcluse((curente) => curente.filter((id) => id !== linieId))
+
+  const adaugaSuplimentar = () =>
+    setSuplimentare((curente) => [
+      ...curente,
+      { cheie: crypto.randomUUID(), articol: null, cantitate: '' },
+    ])
+  const schimbaSuplimentar = (cheie: string, modificare: Partial<StofaSuplimentara>) =>
+    setSuplimentare((curente) =>
+      curente.map((s) => (s.cheie === cheie ? { ...s, ...modificare } : s)),
+    )
+  const stergeSuplimentar = (cheie: string) =>
+    setSuplimentare((curente) => curente.filter((s) => s.cheie !== cheie))
+
   const cantitateCurata = normalizeazaZecimala(cantitate)
   const cantitateInvalida = cantitate.trim() !== '' && cantitateCurata === null
 
@@ -195,6 +227,13 @@ function BonNou() {
         return curat === null ? [] : [[k, curat] as const]
       }),
     ),
+    liniiExcluse,
+    liniiSuplimentare: suplimentare.flatMap((s) => {
+      const curat = normalizeazaZecimala(s.cantitate)
+      return s.articol === null || curat === null
+        ? []
+        : [{ codSaga: s.articol.codSaga, cantitate: curat }]
+    }),
   })
 
   const previzualizare = useMutation({
@@ -244,7 +283,7 @@ function BonNou() {
   useEffect(() => {
     reset()
     setSalvat(null)
-  }, [reset, cantitate, dimensiuneId, alegeri, cantitatiLinii])
+  }, [reset, cantitate, dimensiuneId, alegeri, cantitatiLinii, liniiExcluse, suplimentare])
 
   function trimite(eveniment: FormEvent) {
     eveniment.preventDefault()
@@ -389,10 +428,19 @@ function BonNou() {
           onAlege={alege}
           onCantitate={scrieCantitate}
           onResetCantitate={resetCantitate}
+          excluse={liniiExcluse}
+          onExclude={exclude}
+          onInclude={include}
+          suplimentare={suplimentare}
+          onAdaugaSuplimentar={adaugaSuplimentar}
+          onSchimbaSuplimentar={schimbaSuplimentar}
+          onStergeSuplimentar={stergeSuplimentar}
           onAlegeToate={(articol) =>
             setAlegeri((curente) => ({
               ...curente,
-              ...Object.fromEntries(stofe.map((l) => [l.id, articol])),
+              ...Object.fromEntries(
+                stofe.filter((l) => !liniiExcluse.includes(l.id)).map((l) => [l.id, articol]),
+              ),
             }))
           }
           onSterge={sterge}
