@@ -186,6 +186,14 @@ async function incarca(fisa: Fisa) {
     return
   }
 
+  // A retired model is one someone decided against — usually because the same
+  // product arrived from SAGA under its full name. Rebuilding its recipe would
+  // also refill the mapping queue with materials nobody has to decide any more.
+  if (existent !== undefined && !existent.activ) {
+    console.log('  Modelul e dezactivat; îl sar. Reactivează-l întâi dacă îl vrei înapoi.')
+    return
+  }
+
   let modelId: string
   let retetaId: string
 

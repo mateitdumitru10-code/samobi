@@ -73,7 +73,9 @@ const deLegat = await db
   })
   .from(dimension)
   .innerJoin(model, eq(model.id, dimension.modelId))
-  .where(isNull(dimension.codSagaProdus))
+  // Retired models keep their dimensions; nobody needs to choose an article for
+  // a product that is no longer on the list.
+  .where(and(isNull(dimension.codSagaProdus), eq(model.activ, true), eq(dimension.activ, true)))
 
 console.log(`${deLegat.length} dimensiuni fără produs finit.\n`)
 
