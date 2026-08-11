@@ -841,18 +841,20 @@ export function RetetaEditor({
                         aria-pressed={linie.esteVariabil}
                         title={
                           linie.esteVariabil
-                            ? 'Materialul se alege la emiterea bonului. Apasă ca să-l fixezi.'
-                            : 'Materialul e fix. Apasă dacă se alege la emiterea bonului (stofa).'
+                            ? 'Materialul se alege la emiterea bonului — rețeta dă doar ' +
+                              'cantitatea. Apasă ca să pui un cod fix la loc.'
+                            : 'Materialul e fix, cu codul de aici. Apasă dacă se alege la ' +
+                              'emiterea bonului, cum e stofa.'
                         }
                         aria-label={`Materialul de pe linia ${linie.nrLinie} se alege la emiterea bonului`}
                         onClick={() => schimba(linie.cheie, 'esteVariabil', !linie.esteVariabil)}
                         className={
                           linie.esteVariabil
-                            ? 'actiune-rand shrink-0 border border-info-border bg-info-bg px-1.5 text-[10px] font-medium text-info'
-                            : 'actiune-rand shrink-0 border border-line px-1.5 text-[10px] text-ink-disabled'
+                            ? 'actiune-rand shrink-0 whitespace-nowrap border border-info-border bg-info-bg px-1.5 text-[11px] font-medium text-info'
+                            : 'actiune-rand shrink-0 whitespace-nowrap border border-line px-1.5 text-[11px] text-ink-disabled'
                         }
                       >
-                        pe bon
+                        se alege
                       </button>
                       {/* On the row, not under it. The name is in the field and
                           the code beside it, so a line stays one line — forty
