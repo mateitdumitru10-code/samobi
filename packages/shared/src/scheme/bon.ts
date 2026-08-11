@@ -17,6 +17,11 @@ export const schemaPrevizualizare = z.object({
   cantitate,
   /** recipe line id → chosen SAGA article, for the variable lines */
   alegeri: z.record(z.string().uuid(), z.string().trim().min(1)).default({}),
+  /**
+   * recipe line id → quantity typed instead of the recipe's, for the variable
+   * lines. The recipe records what one run consumed; the next roll is wider.
+   */
+  cantitati: z.record(z.string().uuid(), cantitate).default({}),
 })
 export type Previzualizare = z.infer<typeof schemaPrevizualizare>
 

@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { apel } from '../lib/api.js'
 
 import type { ArticolGasit } from './CautaArticol.js'
-import { cant } from './numere.js'
+import { cant, normalizeazaZecimala } from './numere.js'
 
 /**
  * Choosing the fabric when the bon is issued.
@@ -21,6 +21,11 @@ import { cant } from './numere.js'
  *      click each. Nothing to type on the common case.
  *   3. Per line, for the piece that goes in a second fabric, with the fabric
  *      the recipe was imported with offered as the first suggestion.
+ *
+ * The metreage is a suggestion, not a law. The recipe recorded what one run
+ * consumed on one roll; the next fabric is a different width and cuts
+ * differently, so the figure is editable here and carries `sursa = manual`
+ * into the bon when it is touched.
  *
  * The search starts on the fabrics and can be widened to the whole catalogue,
  * because a fabric bought yesterday is not going to wait for anyone to update
@@ -69,15 +74,25 @@ function useStofe(cauta: string, toate: boolean, activ = true) {
 export function AlegeStofe({
   linii,
   alese,
+  bucati,
+  cantitati,
   onAlege,
   onAlegeToate,
   onSterge,
+  onCantitate,
+  onResetCantitate,
 }: {
   linii: LinieStofa[]
   alese: Record<string, ArticolGasit>
+  /** how many products the bon covers — the metreage below is per product */
+  bucati: number
+  /** recipe line id → the metreage as typed here; absent means „ca în rețetă" */
+  cantitati: Record<string, string>
   onAlege: (linieId: string, stofa: ArticolGasit) => void
   onAlegeToate: (stofa: ArticolGasit) => void
   onSterge: (linieId: string) => void
+  onCantitate: (linieId: string, valoare: string) => void
+  onResetCantitate: (linieId: string) => void
 }) {
   const populare = useStofe('', false)
   const numarAlese = linii.filter((l) => alese[l.id] !== undefined).length
@@ -94,7 +109,10 @@ export function AlegeStofe({
     return coduri.size === 1 ? alese[linii[0]?.id ?? '']?.denumire : null
   }, [complet, linii, alese])
 
-  const total = linii.reduce((suma, l) => suma + Number(l.cantitate ?? 0), 0)
+  const total = linii.reduce(
+    (suma, l) => suma + Number(normalizeazaZecimala(cantitati[l.id] ?? '') ?? l.cantitate ?? 0),
+    0,
+  )
 
   return (
     <section className="rounded-lg border border-line bg-surface-sunken p-4">
@@ -113,8 +131,17 @@ export function AlegeStofe({
           </span>
         </h3>
         <p className="text-xs text-ink-muted">
-          {total > 0 && <>{cant(total.toFixed(3))} ML în total · </>}
-          rețeta dă metrajul, stofa se alege acum
+          {/*
+            Per product, not per bon. Someone typing „7" for an order of two
+            would otherwise be booking fourteen metres without being told.
+          */}
+          {total > 0 && (
+            <>
+              {cant(total.toFixed(3))} ML / bucată
+              {bucati > 1 && <> · {cant((total * bucati).toFixed(3))} ML pe bon</>} ·{' '}
+            </>
+          )}
+          metrajul din rețetă e o sugestie, se poate schimba
         </p>
       </header>
 
@@ -159,8 +186,11 @@ export function AlegeStofe({
             key={linie.id}
             linie={linie}
             ales={alese[linie.id]}
+            cantitate={cantitati[linie.id]}
             onAlege={(s) => onAlege(linie.id, s)}
             onSterge={() => onSterge(linie.id)}
+            onCantitate={(v) => onCantitate(linie.id, v)}
+            onResetCantitate={() => onResetCantitate(linie.id)}
           />
         ))}
       </ul>
@@ -175,14 +205,23 @@ export function AlegeStofe({
 function RandStofa({
   linie,
   ales,
+  cantitate,
   onAlege,
   onSterge,
+  onCantitate,
+  onResetCantitate,
 }: {
   linie: LinieStofa
   ales: ArticolGasit | undefined
+  cantitate: string | undefined
   onAlege: (stofa: ArticolGasit) => void
   onSterge: () => void
+  onCantitate: (valoare: string) => void
+  onResetCantitate: () => void
 }) {
+  const dinReteta = cant(linie.cantitate)
+  const modificata = cantitate !== undefined
+  const invalida = modificata && normalizeazaZecimala(cantitate) === null
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
       <span className="w-40 shrink-0 text-ink-secondary">
@@ -197,8 +236,33 @@ function RandStofa({
           </>
         )}
       </span>
-      <span className="w-20 shrink-0 text-right font-medium tabular-nums text-ink">
-        {cant(linie.cantitate)} {linie.um}
+      <span className="flex shrink-0 items-center gap-1.5">
+        {/*
+          Not `type="number"`: a scroll wheel over a focused number input
+          changes the value in silence, and this one ends up in SAGA.
+        */}
+        <input
+          value={modificata ? cantitate : dinReteta}
+          inputMode="decimal"
+          aria-label={`Cantitate linia ${linie.nrLinie}`}
+          aria-invalid={invalida}
+          onChange={(e) => onCantitate(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          className={`camp camp-mic w-20 text-right font-medium tabular-nums ${
+            modificata && !invalida ? 'border-brand text-brand' : ''
+          }`}
+        />
+        <span className="text-xs text-ink-muted">{linie.um}</span>
+        {modificata && (
+          <button
+            type="button"
+            onClick={onResetCantitate}
+            title="Înapoi la metrajul din rețetă"
+            className="text-xs text-brand underline underline-offset-2"
+          >
+            rețeta: {dinReteta}
+          </button>
+        )}
       </span>
 
       {ales === undefined ? (

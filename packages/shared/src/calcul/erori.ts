@@ -154,3 +154,20 @@ export class EroareCantitateNegativa extends EroareCalcul {
     super(`Linia ${nrLinie} produce o cantitate negativă: ${valoare}.`, { nrLinie, valoare })
   }
 }
+
+/**
+ * A quantity typed on the bon belongs to a line whose article is chosen there
+ * too. Anywhere else the recipe is the answer, and letting the number be edited
+ * per bon would make the recipe a suggestion nobody can audit.
+ */
+export class EroareCantitateManualaNepermisa extends EroareCalcul {
+  readonly cod = 'CANTITATE_MANUALA_NEPERMISA'
+
+  constructor(nrLinie: number) {
+    super(
+      `Linia ${nrLinie} nu este variabilă — cantitatea ei vine din rețetă și nu poate fi ` +
+        `schimbată pe bon.`,
+      { nrLinie },
+    )
+  }
+}

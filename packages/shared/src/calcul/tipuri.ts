@@ -76,6 +76,12 @@ export interface IntrareCalcul {
   cantitateProdus: string
   /** recipe line id → chosen SAGA article, for lines with `esteVariabil` */
   alegeriMateriale: ReadonlyMap<string, string>
+  /**
+   * recipe line id → quantity typed on the bon, for lines with `esteVariabil`.
+   * The recipe's figure is what the last run consumed, not a law: a wider roll
+   * of fabric covers the same sofa in less.
+   */
+  cantitatiManuale?: ReadonlyMap<string, string>
 }
 
 /** One recipe line's contribution to a consumption row. Kept for audit. */

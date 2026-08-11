@@ -1,6 +1,7 @@
 import { D, catreString, type Dec } from './decimal.js'
 import {
   EroareCantitateFixaLipsa,
+  EroareCantitateManualaNepermisa,
   EroareCantitateNegativa,
   EroareCodSagaLipsa,
   EroareFormulaLipsa,
@@ -212,13 +213,35 @@ export function calculeazaConsumuri(intrare: IntrareCalcul): RezultatCalcul {
     }
   >()
 
+  const manuale = intrare.cantitatiManuale ?? new Map<string, string>()
+  for (const [linieId] of manuale) {
+    const linie = reteta.linii.find((l) => l.id === linieId)
+    if (linie !== undefined && !linie.esteVariabil) {
+      throw new EroareCantitateManualaNepermisa(linie.nrLinie)
+    }
+  }
+
   for (const linie of reteta.linii) {
     const {
-      neta: netaUnitara,
-      sursa,
+      neta: netaDinReteta,
+      sursa: sursaReteta,
       formulaEvaluata,
       formula,
     } = cantitateNetaUnitara(linie, dimensiune)
+
+    // What the recipe says is a suggestion on a variable line: the metreage
+    // was measured on whatever fabric that run used, and the next one is a
+    // different width. The typed figure wins, and says so in `sursa`.
+    const manuala = manuale.get(linie.id)
+    const areManuala = manuala !== undefined && manuala.trim() !== ''
+    const netaUnitara = areManuala
+      ? parseNumar(manuala, 'cantitate manuală', linie.nrLinie)
+      : netaDinReteta
+    const sursa: SursaCantitate = areManuala ? 'manual' : sursaReteta
+
+    if (areManuala && netaUnitara.lessThanOrEqualTo(0)) {
+      throw new EroareNumarInvalid('cantitate manuală', manuala, linie.nrLinie)
+    }
 
     const procent = parseNumar(linie.procentPierderi, 'procent_pierderi', linie.nrLinie)
     const factorPierderi = new D(1).plus(procent.dividedBy(100))

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { calculeazaConsumuri } from './calculeaza.js'
 import {
   EroareCantitateFixaLipsa,
+  EroareCantitateManualaNepermisa,
   EroareGestiuneInconsistenta,
   EroareInaltimeLipsa,
   EroareMaterialNerezolvat,
@@ -261,6 +262,89 @@ describe('linii variabile', () => {
     })
     expect(r.linii).toHaveLength(1)
     expect(r.linii[0]?.cantitateBruta).toBe('18')
+  })
+})
+
+describe('metrajul scris pe bon', () => {
+  /** A fabric line: the metreage the recipe carries is what one run consumed. */
+  function stofa(cantitateFixa: string) {
+    return linie({
+      codSaga: null,
+      esteVariabil: true,
+      categorieVariabila: 'TEXTIL',
+      um: 'ML',
+      modCalcul: 'fixa',
+      cantitateFixa,
+    })
+  }
+
+  function cuMetraj(l: ReturnType<typeof linie>, manuala: string, cantitate = '1') {
+    return calculeazaConsumuri({
+      reteta: reteta([l]),
+      dimensiune: DIM_2000x1600,
+      cantitateProdus: cantitate,
+      alegeriMateriale: new Map([[l.id, '00023684']]),
+      cantitatiManuale: new Map([[l.id, manuala]]),
+    })
+  }
+
+  it('ține locul cantitățíi din rețetă și se vede în sursă', () => {
+    const l = stofa('10')
+    const r = cuMetraj(l, '12.5')
+    expect(r.linii[0]?.cantitateBruta).toBe('12.5')
+    expect(r.linii[0]?.contributii[0]?.sursa).toBe('manual')
+  })
+
+  it('se înmulțește cu numărul de bucăți, ca orice cantitate unitară', () => {
+    const l = stofa('10')
+    expect(cuMetraj(l, '3', '4').linii[0]?.cantitateBruta).toBe('12')
+  })
+
+  it('lasă neatinse liniile pe care nu le acoperă', () => {
+    const a = stofa('10')
+    const b = stofa('2')
+    const r = calculeazaConsumuri({
+      reteta: reteta([a, b]),
+      dimensiune: DIM_2000x1600,
+      cantitateProdus: '1',
+      alegeriMateriale: new Map([
+        [a.id, '00023684'],
+        [b.id, '00019038'],
+      ]),
+      cantitatiManuale: new Map([[a.id, '7']]),
+    })
+    expect(r.linii.find((x) => x.codSaga === '00023684')?.cantitateBruta).toBe('7')
+    expect(r.linii.find((x) => x.codSaga === '00019038')?.cantitateBruta).toBe('2')
+  })
+
+  it('trece prin procentul de pierderi ca orice cantitate', () => {
+    const l = linie({
+      codSaga: null,
+      esteVariabil: true,
+      um: 'ML',
+      modCalcul: 'fixa',
+      cantitateFixa: '10',
+      procentPierderi: '10',
+    })
+    expect(cuMetraj(l, '5').linii[0]?.cantitateBruta).toBe('5.5')
+  })
+
+  it('refuză o linie care nu e variabilă — rețeta rămâne rețetă', () => {
+    const l = linie({ modCalcul: 'fixa', cantitateFixa: '4' })
+    expect(() =>
+      calculeazaConsumuri({
+        reteta: reteta([l]),
+        dimensiune: DIM_2000x1600,
+        cantitateProdus: '1',
+        alegeriMateriale: FARA_ALEGERI,
+        cantitatiManuale: new Map([[l.id, '9']]),
+      }),
+    ).toThrow(EroareCantitateManualaNepermisa)
+  })
+
+  it('un metraj gol înseamnă „ca în rețetă", nu zero', () => {
+    const l = stofa('10')
+    expect(cuMetraj(l, '  ').linii[0]?.cantitateBruta).toBe('10')
   })
 })
 

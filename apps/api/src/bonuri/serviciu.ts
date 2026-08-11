@@ -199,6 +199,7 @@ export async function calculeazaCuDenumiri(intrare: {
   dimensiuneId: string
   cantitate: string
   alegeri: Record<string, string>
+  cantitati?: Record<string, string>
 }) {
   const context = await incarcaPentruCalcul(intrare.modelId, intrare.dimensiuneId)
 
@@ -207,6 +208,7 @@ export async function calculeazaCuDenumiri(intrare: {
     dimensiune: context.dimensiune,
     cantitateProdus: intrare.cantitate,
     alegeriMateriale: new Map(Object.entries(intrare.alegeri)),
+    cantitatiManuale: new Map(Object.entries(intrare.cantitati ?? {})),
   })
 
   const coduri = rezultat.linii.map((l) => l.codSaga)

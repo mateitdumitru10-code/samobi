@@ -94,6 +94,8 @@ const ETICHETE_SURSA: Record<string, string> = {
   formula: 'formulă',
   tabel: 'tabel',
   override: 'fixată manual',
+  manual: 'metraj scris pe bon',
+  agregat: 'agregat',
 }
 
 const GESTIUNE_IMPLICITA = 'MATERII PRIME'
@@ -121,6 +123,9 @@ function BonNou() {
     () => localStorage.getItem('samobi:gestiune-produs') ?? GESTIUNE_IMPLICITA,
   )
   const [alegeri, setAlegeri] = useState<Record<string, ArticolGasit>>({})
+  // Only the lines whose metreage was typed over. Absent means „ca în rețetă",
+  // which is what the bon should say when nobody touched it.
+  const [cantitatiLinii, setCantitatiLinii] = useState<Record<string, string>>({})
   const [salvat, setSalvat] = useState<{ cantitate: string; linii: Consum[] } | null>(null)
   const refCantitate = useRef<HTMLInputElement>(null)
 
@@ -148,6 +153,7 @@ function BonNou() {
   useEffect(() => {
     setDimensiuneId('')
     setAlegeri({})
+    setCantitatiLinii({})
   }, [modelId])
 
   const dimensiune = context.data?.dimensiuni.find((d) => d.id === dimensiuneId)
@@ -164,6 +170,16 @@ function BonNou() {
     setAlegeri((curente) =>
       Object.fromEntries(Object.entries(curente).filter(([cheie]) => cheie !== linieId)),
     )
+  const scrieCantitate = (linieId: string, valoare: string) =>
+    setCantitatiLinii((curente) => ({ ...curente, [linieId]: valoare }))
+  const resetCantitate = (linieId: string) =>
+    setCantitatiLinii((curente) =>
+      Object.fromEntries(Object.entries(curente).filter(([cheie]) => cheie !== linieId)),
+    )
+
+  const cantitatiInvalide = Object.entries(cantitatiLinii).filter(
+    ([, v]) => normalizeazaZecimala(v) === null,
+  )
 
   const cantitateCurata = normalizeazaZecimala(cantitate)
   const cantitateInvalida = cantitate.trim() !== '' && cantitateCurata === null
@@ -173,6 +189,12 @@ function BonNou() {
     dimensiuneId,
     cantitate: cantitateCurata ?? '',
     alegeri: Object.fromEntries(Object.entries(alegeri).map(([k, a]) => [k, a.codSaga])),
+    cantitati: Object.fromEntries(
+      Object.entries(cantitatiLinii).flatMap(([k, v]) => {
+        const curat = normalizeazaZecimala(v)
+        return curat === null ? [] : [[k, curat] as const]
+      }),
+    ),
   })
 
   const previzualizare = useMutation({
@@ -208,6 +230,7 @@ function BonNou() {
     dimensiuneId !== '' &&
     toateAlese &&
     cantitateCurata !== null &&
+    cantitatiInvalide.length === 0 &&
     dimensiune?.codSagaProdus != null
 
   /**
@@ -221,7 +244,7 @@ function BonNou() {
   useEffect(() => {
     reset()
     setSalvat(null)
-  }, [reset, cantitate, dimensiuneId, alegeri])
+  }, [reset, cantitate, dimensiuneId, alegeri, cantitatiLinii])
 
   function trimite(eveniment: FormEvent) {
     eveniment.preventDefault()
@@ -361,7 +384,11 @@ function BonNou() {
         <AlegeStofe
           linii={stofe}
           alese={alegeri}
+          bucati={Number(cantitateCurata ?? '1')}
+          cantitati={cantitatiLinii}
           onAlege={alege}
+          onCantitate={scrieCantitate}
+          onResetCantitate={resetCantitate}
           onAlegeToate={(articol) =>
             setAlegeri((curente) => ({
               ...curente,
@@ -512,8 +539,8 @@ function TabelConsumuri({ linii }: { linii: Consum[] }) {
                 {cant(linie.cantitateBrutaRotunjita)}
               </td>
               <td className="px-4 py-2 text-xs">
-                {linie.sursa === 'override' ? (
-                  <Insigna fel="atentie">fixată manual</Insigna>
+                {linie.sursa === 'override' || linie.sursa === 'manual' ? (
+                  <Insigna fel="atentie">{ETICHETE_SURSA[linie.sursa]}</Insigna>
                 ) : (
                   <span className="text-ink-muted">{ETICHETE_SURSA[linie.sursa] ?? linie.sursa}</span>
                 )}
