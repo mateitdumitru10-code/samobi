@@ -41,12 +41,19 @@ const NUMAR = String.raw`[\d ]+\.\d+`
  * that demanding it loses real lines. Without a unit all three are required,
  * because a fragment like `00015370  BUC  6.4000` would otherwise pass as a
  * line whose quantity is really a price.
+ *
+ * The name is optional, and that is not tidiness: in FOTOLIU KIM the product's
+ * name printed on a row of its own at the foot of the page, so its line began
+ * with the code. Requiring a name there matched nothing, the file yielded no
+ * bon at all, and seventeen materials went missing without a word — the model
+ * kept its hand-written sheet instead. Nothing downstream needs the name: a
+ * product is found by its SAGA code.
  */
 const CU_UM = new RegExp(
-  String.raw`^(.*?)\s+(\d{8})\s+([A-Z0-9][A-Z0-9 ]{0,7}?)\s+(${NUMAR})\s+(${NUMAR})(?:\s+(${NUMAR}))?\s*$`,
+  String.raw`^(?:(.*?)\s+)?(\d{8})\s+([A-Z0-9][A-Z0-9 ]{0,7}?)\s+(${NUMAR})\s+(${NUMAR})(?:\s+(${NUMAR}))?\s*$`,
 )
 const FARA_UM = new RegExp(
-  String.raw`^(.*?)\s+(\d{8})\s+(${NUMAR})\s+(${NUMAR})\s+(${NUMAR})\s*$`,
+  String.raw`^(?:(.*?)\s+)?(\d{8})\s+(${NUMAR})\s+(${NUMAR})\s+(${NUMAR})\s*$`,
 )
 const ANTET_BON = /^(\d+)\s+(\d\d\.\d\d\.\d{4})\b/
 /**

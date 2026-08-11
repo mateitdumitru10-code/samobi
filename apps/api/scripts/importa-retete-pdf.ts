@@ -31,6 +31,20 @@ const DOSAR = resolve(import.meta.dirname, '..', '..', '..', 'docs')
 const argumente = process.argv.slice(2).filter((a) => a !== '--')
 const scrie = argumente.includes('--scrie')
 const inlocuieste = argumente.includes('--inlocuieste')
+/**
+ * Which models a replacement is allowed to touch.
+ *
+ * Blanket `--inlocuieste` rewrites all eighty recipes, and the lines it writes
+ * are fixed lines carrying whatever fabric that run used — which would undo the
+ * marking that makes the fabric a choice made on the bon. So a replacement now
+ * names its models.
+ */
+const doar = new Set(
+  argumente
+    .filter((a) => a.startsWith('--doar='))
+    .flatMap((a) => a.slice('--doar='.length).split(',').map((c) => c.trim().toUpperCase()))
+    .filter((c) => c !== ''),
+)
 
 /** Measurements nobody has given yet. Absurd on purpose: a plausible wrong
  * size is the kind that never gets corrected. */
@@ -128,16 +142,36 @@ console.log(`\n${noi.length} produse noi, ${existente.length} deja legate de un 
 for (const b of noi) {
   console.log(`  NOU  ${codModel(b.produs.denumire).padEnd(30)} ${b.consumuri.length} linii`)
 }
+/** A model is replaced only if `--inlocuieste` is on and `--doar` allows it. */
+function deInlocuit(codModelExistent: string): boolean {
+  if (!inlocuieste) return false
+  return doar.size === 0 || doar.has(codModelExistent.toUpperCase())
+}
+
 for (const b of existente) {
   const l = legate.get(b.produs.codSaga)
   console.log(
-    `  ${inlocuieste ? 'ÎNLOCUIESC' : 'sar peste'}  ${(l?.model_cod ?? '').padEnd(30)} ` +
-      `${b.consumuri.length} linii din SAGA`,
+    `  ${deInlocuit(l?.model_cod ?? '') ? 'ÎNLOCUIESC' : 'sar peste'}  ` +
+      `${(l?.model_cod ?? '').padEnd(30)} ${b.consumuri.length} linii din SAGA`,
   )
 }
 
-// What replacing the existing recipes would clear from the mapping queue.
-const idExistente = existente.map((b) => legate.get(b.produs.codSaga)?.model_id ?? '')
+if (doar.size > 0) {
+  const necunoscute = [...doar].filter(
+    (c) => ![...legate.values()].some((l) => l.model_cod.toUpperCase() === c),
+  )
+  if (necunoscute.length > 0) {
+    console.error(`\n--doar numește modele care nu au produs legat: ${necunoscute.join(', ')}`)
+    await clientSql.end({ timeout: 5 })
+    process.exit(1)
+  }
+}
+
+// What replacing the existing recipes would clear from the mapping queue —
+// counted over the models a replacement would actually reach.
+const idExistente = existente
+  .filter((b) => deInlocuit(legate.get(b.produs.codSaga)?.model_cod ?? ''))
+  .map((b) => legate.get(b.produs.codSaga)?.model_id ?? '')
 if (idExistente.length > 0) {
   const [efect] = await clientSql.unsafe<{ ocurente: number; materiale: number }[]>(
     `select count(*)::int ocurente, count(distinct o.unmapped_material_id)::int materiale
@@ -252,8 +286,10 @@ await db.transaction(async (tx) => {
 
   if (inlocuieste) {
     for (const bon of existente) {
-      const modelId = legate.get(bon.produs.codSaga)?.model_id
+      const legat = legate.get(bon.produs.codSaga)
+      const modelId = legat?.model_id
       if (modelId === undefined) continue
+      if (!deInlocuit(legat?.model_cod ?? '')) continue
 
       const retete = await tx.select().from(recipe).where(eq(recipe.modelId, modelId))
       const retetaId = retete[0]?.id
