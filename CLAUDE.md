@@ -96,6 +96,56 @@ Două capcane, ambele deja plătite o dată:
 - `cod_saga` este **text**, nu integer. Are zerouri semnificative în față (`00023684`).
 - La scrierea în XLSX, coloana de cod primește format `@`. Fără asta, importul în SAGA eșuează.
 
+### API-ul SAGA
+
+**SAGA WEB are API din iunie 2026.** Documentația: `https://web0.sagasoft.ro/sagac/DocumentatieAPI`.
+Firma rulează SAGA WEB și SAGA C în paralel, conectate. Regula de dinainte — „nu există API" —
+a fost adevărată când a fost scrisă și nu mai e.
+
+Deocamdată **nu e integrat**: nu există niciun apel către SAGA în cod. Ce urmează sunt regulile
+pentru momentul în care se scrie, nu descrierea a ceva existent.
+
+- Bază: `https://web0.sagasoft.ro/sagac/api/v20260225`. Versiunea e o dată în cale, deci o
+  schimbare de versiune e o schimbare de URL, nu o negociere de conținut. Hostul se ține într-o
+  variabilă de mediu, nu în cod: `web0` e hostul pe care s-a găsit documentația, iar dacă SAGA mută
+  clienții pe alt nod, nu vrem o recompilare.
+- Autentificare: `Authorization: Bearer <token>` **plus** `X-Saga-Cod-Fiscal: <CUI>`. Token-ul se
+  generează din SAGA WEB, Administrare → Utilizatori, doar de pe un cont de administrator.
+- `SAGA_API_TOKEN` și `SAGA_COD_FISCAL` trăiesc exclusiv în `apps/api`, ca
+  `SUPABASE_SERVICE_ROLE_KEY`. În `apps/web` sau sub prefix `VITE_` e breșă de securitate.
+- **O rotire ratată blochează cheia.** Documentația: „În anumite situații, răspunsul va conține
+  [...] o nouă cheie de acces în header-ul `X-Saga-Refresh-Token`. Aceasta trebuie salvată pentru a
+  putea fi folosită la următorul apel. În caz contrar, cheia de acces va fi blocată și va trebui să
+  generați una nouă." Rotirea nu vine la fiecare apel, deci codul care o ignoră merge — până nu mai
+  merge deloc. Verificat pe viu: un răspuns **400** a purtat antetul de rotire, iar cheia
+  nesalvată a fost blocată. O cerere eșuată rotește la fel ca una reușită. Consecințele nu sunt
+  negociabile:
+  - Noul token se persistă **înainte** de a citi corpul răspunsului, pe orice cale de ieșire,
+    inclusiv la eroare. Un `throw` înaintea salvării blochează integrarea până la regenerare
+    manuală din SAGA WEB.
+  - Apelurile către SAGA se **serializează**. Două cereri simultane cu același token înseamnă că
+    una primește 401 și, mai rău, se poate salva token-ul perdantului. Blocare consultativă în
+    Postgres în jurul fiecărui apel, nu doar în jurul scrierii.
+  - **Cu cât mai puține apeluri, cu atât mai bine.** Fiecare apel e o ocazie de a pierde cheia.
+    Un snapshot bulk, rar, e mai sigur decât zeci de citiri punctuale.
+  - Un răspuns pierdut pe drum (timeout) e ambiguu: serverul poate să fi rotit cheia fără ca noi
+    să aflăm noua valoare. Nu există recuperare automată — trebuie un drum manual de reintroducere
+    a cheii, altfel un timeout oprește funcția până când cineva intră în SAGA.
+  - Variabila de mediu e doar sămânța de pornire. Mașina Fly are `auto_stop_machines = "suspend"`,
+    deci memoria procesului nu supraviețuiește; valoarea curentă stă în bază.
+- Datele se trimit strict `dd.MM.yyyy`. Orice alt format întoarce eroare.
+- Cantitățile vin ca **string**. Rămân string — regula de la „Numere" nu are excepție aici.
+- Scrierea există, dar nu pentru noi. `POST /Import` primește XML pentru șapte tipuri de document,
+  după prefixul fișierului: `F_` facturi, `C_` comenzi, `I_` încasări, `P_` plăți, `FUR_` furnizori,
+  `CLI_` clienți, `ART_` articole. **Bonul de consum nu e printre ele**, iar exportul nostru intră
+  în ecranul `Producție` al SAGA. Deci exportul de consumuri rămâne fișierul XLSX, nu din
+  preferință, ci fiindcă nu există endpoint care să-l primească.
+- Stocul citit prin API **nu știe de bonurile emise și neexportate încă** — descărcarea se
+  întâmplă abia la importul fișierului în SAGA. Orice comparație cu necesarul scade întâi consumul
+  bonurilor cu status `calculat`.
+- SAGA indisponibilă nu blochează emiterea unui bon. Consumul fizic s-a întâmplat deja în atelier;
+  documentul iese, iar faptul că stocul era necunoscut rămâne în audit.
+
 ### Formule
 
 - Se evaluează **exclusiv** prin `expr-eval` cu scope explicit. `eval()` și
@@ -134,5 +184,6 @@ Două capcane, ambele deja plătite o dată:
 - Nu expune tabelele direct către frontend prin PostgREST.
 - Nu introduce alt ORM, alt framework de UI sau altă librărie de state management.
 - Nu genera fișiere XLSX cu formule — exportul e date brute.
-- Nu implementa integrare API cu SAGA. Nu există.
+- Nu încerca să trimiți consumurile prin API-ul SAGA. Nu există tip de document pentru ele.
+  Citirea stocurilor e permisă, după regulile de la „API-ul SAGA".
 - Nu adăuga funcționalități care nu sunt în `docs/SPEC.md`. Întreabă întâi.
