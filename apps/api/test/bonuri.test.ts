@@ -414,4 +414,54 @@ describe.skipIf(!areBazaDeDate)('bonuri și export', () => {
     expect(res.statusCode).toBe(409)
     await app.close()
   })
+
+  /**
+   * Only the refusal above was covered, so the button everyone actually presses
+   * was the untested half: a bon that has not left for SAGA yet.
+   */
+  it('anulează un bon necalculat în export și îl scoate din listă', async () => {
+    const app = await buildApp()
+
+    const linii = (
+      await app.inject({
+        method: 'GET',
+        url: `/modele/${modelId}/reteta`,
+        headers: antet('operator'),
+      })
+    ).json() as { linii: { id: string; nrLinie: number }[] }
+    const linieVariabila = linii.linii.find((l) => l.nrLinie === 2)?.id ?? ''
+
+    const creat = await app.inject({
+      method: 'POST',
+      url: '/bonuri',
+      headers: antet('operator'),
+      payload: {
+        modelId,
+        dimensiuneId,
+        cantitate: '1',
+        data: '2026-08-11',
+        gestiuneProdus: 'MATERII PRIME',
+        alegeri: { [linieVariabila]: MATERIAL_VARIABIL },
+      },
+    })
+    expect(creat.statusCode).toBe(201)
+    const bonId = (creat.json() as { id: string }).id
+    bonuri.push(bonId)
+
+    const anulare = await app.inject({
+      method: 'POST',
+      url: `/bonuri/${bonId}/anulare`,
+      headers: antet('operator'),
+    })
+    expect(anulare.statusCode).toBe(200)
+    expect(anulare.json()).toMatchObject({ id: bonId, status: 'anulat' })
+
+    // The list is what the screen reads, so the status has to have landed there.
+    const lista = (
+      await app.inject({ method: 'GET', url: '/bonuri', headers: antet('operator') })
+    ).json() as { id: string; status: string }[]
+    expect(lista.find((b) => b.id === bonId)?.status).toBe('anulat')
+
+    await app.close()
+  })
 })

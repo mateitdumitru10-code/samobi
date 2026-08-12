@@ -28,7 +28,17 @@ export async function buildApp(optiuni: OptiuniApp = {}): Promise<FastifyInstanc
     },
   })
 
-  await app.register(cors, { origin: allowedOrigins, credentials: true })
+  // `methods` is spelled out on purpose. @fastify/cors 11 narrowed its default
+  // to the CORS-safelisted `GET,HEAD,POST`, which silently drops PUT and PATCH
+  // out of `access-control-allow-methods`. The browser then refuses the
+  // preflight and `fetch` rejects with a TypeError, so saving a recipe surfaced
+  // as „Nu s-a putut contacta serverul" while the API was healthy and answering
+  // curl. Leaving this implicit means the next bump can take a verb away again.
+  await app.register(cors, {
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  })
   // The nomenclature import is a file upload; nothing else in the API takes one.
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 1 } })
   inregistreazaTratareErori(app)
