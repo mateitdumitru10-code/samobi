@@ -23,6 +23,7 @@
     "raport-remapare": "tsx --env-file=.env scripts/raport-remapare.ts",
     "remapare-evidente": "tsx --env-file=.env scripts/remapare-evidente.ts",
     "cheie-saga": "tsx --env-file=.env scripts/cheie-saga.ts",
+    "sincronizeaza-stoc": "tsx --env-file=.env scripts/sincronizeaza-stoc.ts",
     "propune-formule": "tsx --env-file=.env scripts/propune-formule.ts",
     "aplica-formule": "tsx --env-file=.env scripts/aplica-formule.ts",
     "raport-dimensiuni": "tsx --env-file=.env scripts/raport-dimensiuni.ts",

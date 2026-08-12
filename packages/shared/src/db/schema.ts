@@ -11,6 +11,7 @@ import {
   numeric,
   pgSchema,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -117,6 +118,14 @@ export const sagaArticle = pgTable(
      */
     stoc: cantitate('stoc'),
     /**
+     * When the stock figure above was read, which `sincronizat_la` does not say:
+     * that one moves on any catalogue import, including one carrying no stock
+     * column at all, so a three-week-old quantity could sit under today's
+     * timestamp. A screen that shows a stock figure has to be able to say how
+     * old it is.
+     */
+    stocLa: timestamp('stoc_la', { withTimezone: true }),
+    /**
      * The unit price SAGA last used when this article was consumed on a bon.
      *
      * Kept apart from `pret_referinta`, which is the catalogue's weighted
@@ -209,6 +218,68 @@ export const sagaCredential = pgTable(
     ),
     check('saga_credential_rotiri_pozitive', sql`${t.rotiri} >= 0`),
   ],
+).enableRLS()
+
+/**
+ * What SAGA holds, per article and per warehouse, as of the last reading.
+ *
+ * A photograph, never a ledger. The application does not decrement it when a bon
+ * is issued and does not add to it when goods arrive — SAGA is the only
+ * accounting, and a second running total kept here would eventually disagree
+ * with it and be believed anyway.
+ *
+ * Per warehouse rather than summed, because the sum cannot be taken apart again
+ * and recipe lines carry a `gestiune_descarcare`. SAGA sends the warehouse as a
+ * code (`0001`) and its name separately; the names match the ones already in
+ * this database, so the name is what the two systems are joined on.
+ *
+ * One reading replaces the whole snapshot. SAGA returns its entire catalogue
+ * whatever period is asked for — a one-day window and a thirty-day window come
+ * back with the same 28.180 rows — so an article missing from a fresh response
+ * is an article SAGA no longer has a record for, and a leftover row would be a
+ * number nobody can source.
+ */
+export const sagaStock = pgTable(
+  'saga_stock',
+  {
+    codSaga: text('cod_saga')
+      .notNull()
+      .references(() => sagaArticle.codSaga),
+    /** SAGA's warehouse code. Empty string when a reading carries no warehouse. */
+    gestiune: text('gestiune').notNull().default(''),
+    denumireGestiune: text('denumire_gestiune'),
+    /**
+     * `CANT_FIN`, the closing quantity.
+     *
+     * Can be negative: stock below zero is a real state in SAGA, so „epuizat"
+     * is `<= 0` and never `= 0`.
+     */
+    cantitate: cantitate('cantitate').notNull(),
+    citLa: timestamp('cit_la', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.codSaga, t.gestiune] }),
+    index('saga_stock_cod_idx').on(t.codSaga),
+  ],
+).enableRLS()
+
+/** One row per stock reading, so a figure on screen can be traced to a moment. */
+export const sagaStockSync = pgTable(
+  'saga_stock_sync',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    rulatLa: timestamp('rulat_la', { withTimezone: true }).notNull().defaultNow(),
+    /** Null when nobody asked — a scheduled reading has no user behind it. */
+    rulatDe: uuid('rulat_de').references(() => profile.id),
+    randuri: integer('randuri').notNull().default(0),
+    articole: integer('articole').notNull().default(0),
+    /** Codes SAGA returned that this catalogue has never heard of. */
+    necunoscute: integer('necunoscute').notNull().default(0),
+    /** Articles used by a recipe whose total is at or below zero. */
+    epuizate: integer('epuizate').notNull().default(0),
+    durataMs: integer('durata_ms').notNull().default(0),
+  },
+  (t) => [index('saga_stock_sync_rulat_la_idx').on(t.rulatLa)],
 ).enableRLS()
 
 /**
