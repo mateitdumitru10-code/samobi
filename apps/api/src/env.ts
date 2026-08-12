@@ -35,6 +35,11 @@ const schema = z.object({
   /** The company's tax code, no `RO` prefix — SAGA rejects it with one. */
   SAGA_COD_FISCAL: z.string().optional(),
   /**
+   * The version is a date inside the path, and `web0` is the node the
+   * documentation was found on, not a promise. Both belong in configuration.
+   */
+  SAGA_API_URL: z.string().url().default('https://web0.sagasoft.ro/sagac/api/v20260225'),
+  /**
    * Encrypts the stored SAGA key. 32 bytes, hex or base64.
    * Generate with `openssl rand -base64 32`.
    */
