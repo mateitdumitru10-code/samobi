@@ -1,0 +1,40 @@
+# Numele se schimbă la `fly launch`; restul e gata de folosit.
+app = "samobi-api"
+
+# Londra, nu București.
+#
+# Baza de date stă în Irlanda (`aws-1-eu-west-1`), și o singură cerere face mai
+# multe interogări una după alta. Distanța până la bază se plătește de fiecare
+# dată; distanța până la utilizator, o dată. Londra e la ~12 ms de Dublin,
+# Bucureștiul la ~50 ms.
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # O singură mașină care doarme când nu e folosită: fabrica emite bonuri în
+  # program, nu noaptea. Prima cerere de dimineață așteaptă ~2 secunde.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 80
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  # 512 MB e prea puțin: importul nomenclatorului ține în memorie un XLSX de
+  # 24.000 de articole.
+  memory = "1gb"

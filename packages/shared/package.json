@@ -4,11 +4,31 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./db": "./src/db/schema.ts",
-    "./calcul": "./src/calcul/index.ts",
-    "./scheme": "./src/scheme/index.ts",
-    "./nomenclator": "./src/nomenclator/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./db": {
+      "types": "./dist/db/schema.d.ts",
+      "development": "./src/db/schema.ts",
+      "default": "./dist/db/schema.js"
+    },
+    "./calcul": {
+      "types": "./dist/calcul/index.d.ts",
+      "development": "./src/calcul/index.ts",
+      "default": "./dist/calcul/index.js"
+    },
+    "./scheme": {
+      "types": "./dist/scheme/index.d.ts",
+      "development": "./src/scheme/index.ts",
+      "default": "./dist/scheme/index.js"
+    },
+    "./nomenclator": {
+      "types": "./dist/nomenclator/index.d.ts",
+      "development": "./src/nomenclator/index.ts",
+      "default": "./dist/nomenclator/index.js"
+    }
   },
   "scripts": {
     "build": "tsc --build",
@@ -26,5 +46,7 @@
     "drizzle-kit": "^0.31.6",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
-  }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
 }
