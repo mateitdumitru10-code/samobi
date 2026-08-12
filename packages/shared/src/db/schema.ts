@@ -153,6 +153,65 @@ export const sagaSync = pgTable(
 ).enableRLS()
 
 /**
+ * The one live access key for the SAGA WEB API.
+ *
+ * SAGA hands back a replacement key in `X-Saga-Refresh-Token` whenever it feels
+ * like it, and its documentation is blunt about the consequence: „Aceasta
+ * trebuie salvata [...] In caz contrar, cheia de acces va fi blocata si va
+ * trebui sa generati una noua." A rotation that is not stored kills the key —
+ * measured, and it cost two of them. So the current value cannot live in an
+ * environment variable: the Fly machine suspends when idle and comes back with
+ * whatever `.env` said at deploy time, which by then is a dead key.
+ *
+ * One row, forever — `id` is pinned to 1. A second row would be a second key,
+ * and two keys racing each other is exactly the failure this table exists to
+ * prevent.
+ *
+ * The key is stored encrypted, and the application holds the encryption key.
+ * Anyone with the Supabase dashboard can read every table in `public`; this one
+ * would hand them a live credential to the company's accounting.
+ */
+export const sagaCredential = pgTable(
+  'saga_credential',
+  {
+    id: integer('id').primaryKey().default(1),
+    /** AES-256-GCM, base64. Never the key itself. */
+    cheie: text('cheie').notNull(),
+    rotitaLa: timestamp('rotita_la', { withTimezone: true }).notNull().defaultNow(),
+    /** Only ever climbs. A jump means something is calling SAGA more than it should. */
+    rotiri: integer('rotiri').notNull().default(0),
+    /**
+     * Single-flight lease, held while a request is in flight.
+     *
+     * Not an advisory lock: the runtime connection goes through the pooler in
+     * transaction mode, where session-level locks are meaningless and a
+     * transaction-level one would have to stay open across the HTTP call,
+     * pinning a pooled connection for the length of a 21 MB download. A lease
+     * with an expiry costs nothing, survives a crashed process, and is one
+     * atomic UPDATE.
+     */
+    rezervataPana: timestamp('rezervata_pana', { withTimezone: true }),
+    /** Free text, for reading the logs after a stuck lease. */
+    rezervataDe: text('rezervata_de'),
+    /**
+     * Set when SAGA refuses the key. Nothing automatic recovers from this —
+     * a human generates a new key in SAGA WEB and seeds it. The flag exists so
+     * the screen can say that in Romanian instead of failing obscurely.
+     */
+    invalida: boolean('invalida').notNull().default(false),
+    motivInvalida: text('motiv_invalida'),
+  },
+  (t) => [
+    check('saga_credential_un_singur_rand', sql`${t.id} = 1`),
+    check(
+      'saga_credential_invalida_motivata',
+      sql`${t.invalida} = false or ${t.motivInvalida} is not null`,
+    ),
+    check('saga_credential_rotiri_pozitive', sql`${t.rotiri} >= 0`),
+  ],
+).enableRLS()
+
+/**
  * Materials named in a recipe that have no counterpart in the catalogue.
  * They block the export of any bon that uses them.
  */

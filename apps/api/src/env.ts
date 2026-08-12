@@ -22,6 +22,23 @@ const schema = z.object({
 
   /** Comma-separated list of origins allowed to call the API. */
   WEB_ORIGIN: z.string().default('http://localhost:5173'),
+
+  /**
+   * SAGA WEB. Optional: the application runs without them, only the stock
+   * features go dark.
+   *
+   * `SAGA_API_TOKEN` is a seed, not the key. SAGA rotates the key mid-flight and
+   * blocks it if a rotation is missed, so the live value lives in
+   * `saga_credential` and this variable is read only when that table is empty.
+   */
+  SAGA_API_TOKEN: z.string().optional(),
+  /** The company's tax code, no `RO` prefix — SAGA rejects it with one. */
+  SAGA_COD_FISCAL: z.string().optional(),
+  /**
+   * Encrypts the stored SAGA key. 32 bytes, hex or base64.
+   * Generate with `openssl rand -base64 32`.
+   */
+  SAGA_TOKEN_KEY: z.string().optional(),
 })
 
 const parsed = schema.safeParse(process.env)
