@@ -1,0 +1,19 @@
+{
+  // Frontend-ul, servit ca fișiere statice de pe rețeaua Cloudflare.
+  //
+  // No worker script: this deploys the built assets and nothing else. All the
+  // business logic lives behind the Fastify API, which is a separate service —
+  // nothing here talks to the database or holds a key.
+  "name": "samobi",
+  "compatibility_date": "2026-08-01",
+
+  "assets": {
+    "directory": "./apps/web/dist",
+    // `/activare` is a real path, not a fragment: Supabase appends its own
+    // `#access_token=...` to whatever redirect it is given, so an invitation
+    // link that ended in a fragment would produce two of them and the session
+    // would never be found. That path has no file behind it, so every unmatched
+    // request has to fall back to index.html for the router to see it.
+    "not_found_handling": "single-page-application"
+  }
+}
